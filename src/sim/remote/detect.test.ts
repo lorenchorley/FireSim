@@ -1,18 +1,18 @@
 /**
- * detectHost (contract 0.8.0 J, 3.5): the one same-origin request, the type check of the answer, null on every failure and
- * mismatch, and the 800 ms default timeout.
+ * detectHost (contract 0.8.0 J, 3.5; the probe of protocol 2 since 0.9.0): the one request, the type check of the answer (three
+ * fields: the host says no more before the code), null on every failure and mismatch, and the 800 ms default timeout.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { detectHost, type RemoteHostInfo } from './detect';
+import { detectHost, type RemoteHostProbe } from './detect';
 
-const INFO: RemoteHostInfo = { app: 'firesim-desktop-host', protocol: 1, name: 'Desk', cores: 8, node: '22.22.0', sessions: 0, maxSessions: 3 };
+const INFO: RemoteHostProbe = { app: 'firesim-desktop-host', protocol: 2, requiresCode: true };
 
 const answer = (body: unknown, init: { status?: number } = {}): Response => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status: init.status ?? 200 });
 
 afterEach(() => vi.useRealTimers());
 
 describe('detectHost', () => {
-  it('returns the info of a FireSim desktop host, asking only /__firesim/host of the base, without caches and without following a redirect (which could lead to another origin)', async () => {
+  it('returns the probe of a FireSim desktop host, asking only /__firesim/host of the base, without caches and without following a redirect (which could lead to another origin)', async () => {
     const calls: [string, RequestInit | undefined][] = [];
     const fetchFn = (async (url: string, init?: RequestInit) => {
       calls.push([url, init]);
@@ -42,7 +42,7 @@ describe('detectHost', () => {
     }
   });
 
-  it('is null for everything that is not a FireSim desktop host of this protocol', async () => {
+  it('is null for everything that is not the answer of a FireSim desktop host', async () => {
     const wrong: [string, () => Response][] = [
       ['a 404', () => answer('nope', { status: 404 })],
       ['a 500', () => answer(INFO, { status: 500 })],
@@ -52,17 +52,23 @@ describe('detectHost', () => {
       ['an array', () => answer([INFO])],
       ['a string', () => answer('"firesim-desktop-host"')],
       ['another app', () => answer({ ...INFO, app: 'something-else' })],
-      ['another protocol', () => answer({ ...INFO, protocol: 2 })],
-      ['protocol as text', () => answer({ ...INFO, protocol: '1' })],
-      ['no name', () => answer({ ...INFO, name: undefined })],
-      ['a name that is a number', () => answer({ ...INFO, name: 5 })],
-      ['cores as text', () => answer({ ...INFO, cores: '8' })],
-      ['negative cores', () => answer({ ...INFO, cores: -1 })],
-      ['fractional sessions', () => answer({ ...INFO, sessions: 1.5 })],
-      ['no node', () => answer({ ...INFO, node: undefined })],
-      ['no maxSessions', () => answer({ ...INFO, maxSessions: undefined })],
+      ['protocol as text', () => answer({ ...INFO, protocol: '2' })],
+      ['a fractional protocol', () => answer({ ...INFO, protocol: 2.5 })],
+      ['protocol 0', () => answer({ ...INFO, protocol: 0 })],
+      ['no protocol', () => answer({ ...INFO, protocol: undefined })],
+      ['no requiresCode (a host of protocol 1 had none)', () => answer({ app: 'firesim-desktop-host', protocol: 1, name: 'Desk', cores: 8, node: '22.22.0', sessions: 0, maxSessions: 3 })],
+      ['requiresCode as text', () => answer({ ...INFO, requiresCode: 'true' })],
     ];
     for (const [what, make] of wrong) expect(await detectHost({ base: 'http://h:1', fetchFn: (async () => make()) as unknown as typeof fetch }), what).toBeNull();
+  });
+
+  it('says which version the host speaks, whatever it is: it is connectRemote that refuses another one (a RemoteVersionError), so the page can say "update" and not "no desktop"', async () => {
+    for (const protocol of [1, 3, 99]) expect(await detectHost({ base: 'http://h:1', fetchFn: (async () => answer({ ...INFO, protocol })) as unknown as typeof fetch })).toEqual({ app: 'firesim-desktop-host', protocol, requiresCode: true });
+  });
+
+  it('keeps the three fields and drops whatever else an answer carries (a name, cores and the like are for after the code)', async () => {
+    const full = { ...INFO, name: 'Studio PC', cores: 16, node: '22.22.0', sessions: 1, maxSessions: 3, secret: 'x' };
+    expect(await detectHost({ base: 'http://h:1', fetchFn: (async () => answer(full)) as unknown as typeof fetch })).toEqual(INFO);
   });
 
   it('is null when the request fails (a refused connection, a redirect, a thrown error) and never throws', async () => {

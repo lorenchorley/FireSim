@@ -133,6 +133,18 @@ describe('SceneView and the idle stop (source pins: the loop is not run here, so
     expect(scene).toMatch(/if \(idle !== this\.heldStill\) \{\s+this\.heldStill = idle;\s+this\.glyphs\.setPaused\(idle\);\s+if \(!idle\) this\.dirty = true;\s+\}/);
   });
 
+  it('a view that holds still finishes the forest in one frame: the placement is pumped to its end, and a camera settle that was still waiting is placed then (0.9.0, lane R)', () => {
+    // (measured: a drawn frame takes the software GL about 1.15 s and the placement is a step a drawn frame, so a view held after 3 s had its forest unfinished for some 20 s)
+    expect(scene).toMatch(/const settle = this\.settleNow \|\| idle;/);
+    expect(scene).toMatch(/\} else if \(this\.vegPending && \(settle \|\| now - this\.vegPending > 350\) && !this\.rig\.flying\) \{/);
+    expect(scene).toMatch(/if \(this\.vegetation\?\.pump\(settle \? Infinity : 4\)\) this\.dirty = true;/);
+    // a held view draws a frame when a settle is waiting (the loop would not run for it: it is not an ambient animation), and that frame does the settle
+    expect(scene).toMatch(/const settle = this\.settleNow \|\| idle;\s+if \(idle && this\.vegPending\) this\.dirty = true;/);
+    // and nothing else changed which frames are settled: the screenshots' `renderNow` is the only other way in, and a limit of "never" leaves `idle` false
+    expect(scene.match(/this\.settleNow \? Infinity : 4/g)).toBeNull();
+    expect(scene.match(/pump\(settle \? Infinity : 4\)/g)).toHaveLength(1);
+  });
+
   it('the CPU particles and the embers are not advanced while idle', () => {
     expect(scene).toMatch(/if \(!idle && this\.embers\.group\.visible && this\.embers\.active > 0\) this\.embers\.animate\(/);
     expect(scene).toMatch(/if \(!idle && this\.wind\.currentMode !== 'off' && this\.sampler\) this\.wind\.animate\(/);

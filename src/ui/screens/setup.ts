@@ -21,6 +21,7 @@ import type { LatLon } from '../../core/geo';
 import { describeFix, describePlace, getLocation, LocationError, readClipboardText } from '../location';
 import { formatCoordinateText, parseLocationText, rememberableText, type LocationNeedsNetwork, type LocationSource } from '../mapsLink';
 import { resolveMapsShortLink } from '../mapsShortLink';
+import { chosenDetail, chosenDetailRefusal, detailChoice } from '../desktopDetailChoice';
 import { desktopSlot, watchDesktop } from '../desktopSlot';
 import { demoImageryUrl } from '../imagery';
 import { datasetIcon } from '../labels';
@@ -516,11 +517,12 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
       update({ extentKm: Number(v) as ExtentKm });
       renderArea();
       schedulePlan();
+      if (chosenDetail()) renderFooter(chosenDetailRefusal(store.get().extentKm) !== null); // a finer level may not fit this area: say so at once
     },
   });
   const detailChips = chipChoice({
     label: 'Detail',
-    options: detailChoices(store.get().extentKm, tier()),
+    options: detailChoices(store.get().extentKm, tier(), chosenDetail()),
     value: store.get().detail,
     testId: 'detail',
     onChange: (v) => {
@@ -532,9 +534,9 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
   function renderArea(): void {
     const s = store.get();
     extentChips.set(String(s.extentKm) as '3' | '6' | '9');
-    detailChips.setOptions(detailChoices(s.extentKm, tier()));
+    detailChips.setOptions(detailChoices(s.extentKm, tier(), chosenDetail()));
     detailChips.set(s.detail);
-    const c = detailCell(s.extentKm, s.detail, tier());
+    const c = detailCell(s.extentKm, s.detail, tier(), chosenDetail());
     const cells = c.cells.toLocaleString('en-AU');
     const why = c.coarsened ? ` 20 m needs an area of 6 km or less.` : '';
     const wind = windHint(c);
@@ -832,7 +834,8 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
   const runCard = section('Run', [durChips.el, h('div', { class: 'list card-list' }, onlineToggle.el)], { icon: 'clock', id: 'setup-run' });
   // The Engine row (0.8.0, workstream J) joins this card only when a desktop host serves the page; without one nothing is added.
   let unmountEngine: (() => void) | undefined;
-  const stopWatchingDesktop = watchDesktop((host) => (unmountEngine = host.mount(runCard, () => buildBtn.click())));
+  const demoSite = (): string | null => (store.get().where === 'demo' ? store.get().demoSiteId : null); // what a page a host serves keeps while Desktop is chosen
+  const stopWatchingDesktop = watchDesktop((host) => (unmountEngine = host.mount(runCard, () => buildBtn.click(), demoSite)));
 
   // ───────────── Data for this run (planned, before anything is downloaded) ─────────────
   const planHead = h('p', { class: 'plan-total', attrs: { 'aria-live': 'polite' }, dataset: { testid: 'plan-total' } }, 'Working out the data this run needs…');
@@ -1069,7 +1072,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
       }
       // On the desktop engine the link is opened first: a wrong code stays here, said next to the code box.
       const desktop = desktopSlot.get().host;
-      if (desktop) void desktop.beforeBuild().then((ok) => ok && !destroyed && opts.onBuild(store.get()));
+      if (desktop) void desktop.beforeBuild(demoSite()).then((ok) => ok && !destroyed && opts.onBuild(store.get()));
       else opts.onBuild(store.get());
     },
   });
@@ -1111,6 +1114,12 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
     renderArea();
     schedulePlan();
   }, ['performance']);
+  // The Desktop detail (0.9.0) sets the fire cell: the chips and the hint above say what the build will make, and a level this page cannot keep the pictures of says so at once.
+  const unsubDetail = detailChoice.subscribe(() => {
+    renderArea();
+    schedulePlan();
+    renderFooter(chosenDetailRefusal(store.get().extentKm) !== null);
+  });
 
   function renderAll(): void {
     const s = store.get();
@@ -1139,6 +1148,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
       packAbort?.abort();
       thumbs.destroy();
       unsubPerf();
+      unsubDetail();
       stopWatchingDesktop();
       unmountEngine?.();
       el.remove();

@@ -12,6 +12,8 @@ import { REPLAYS, WEATHER_PRESETS } from './content';
 import { isPresetId, WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
 import type { BeltKitInput } from '../scenario/beltKit';
 import { builtFireCell, SCENARIO_PARAMS } from '../scenario/params';
+import type { DesktopDetailLevel } from '../core/types';
+import { applyDetail, chosenDetail, chosenDetailRefusal } from './desktopDetailChoice';
 import type { PerformanceMode, ScenarioSettings } from './settings';
 import { performanceProfile } from './settings';
 
@@ -187,6 +189,9 @@ export function validateSetup(s: SetupState, now = Date.now()): string[] {
   const errs: string[] = [];
   const c = resolveCentre(s);
   if ('error' in c) errs.push(c.error);
+  // The Desktop detail (0.9.0): a finer level this page cannot keep the pictures of is refused here, before anything is built.
+  const detailRefused = chosenDetailRefusal(s.extentKm);
+  if (detailRefused) errs.push(detailRefused);
   if (s.weather === 'past' && s.pastTime > now) errs.push('A past date must be before now.');
   if (s.weather === 'forecast' && (s.forecastTime < now - 3600_000 || s.forecastTime > now + 16 * 24 * 3600_000)) errs.push('Forecast start must be within the next 16 days.');
   if (s.weather === 'belt') {
@@ -303,7 +308,8 @@ export function buildRequest(s: SetupState, settings: PerformanceMode | Scenario
   };
   if (c.demoSiteId) req.demoSiteId = c.demoSiteId;
   if (beltKit) req.beltKit = beltKit;
-  return req;
+  // Desktop detail (0.9.0): only while the desktop is the engine chosen; with none the request is exactly what 0.8.0 made.
+  return applyDetail(req, chosenDetail());
 }
 
 /**
@@ -326,10 +332,10 @@ export function detailHint(extentKm: number, detail: Detail, tier?: string): str
  * rule buildRequest + scenario/build.ts resolveRequest apply): cell size, cells per side and in all, whether 20 m was asked
  * for but the area is too large, and whether the wind is the simple 2-D surface model ('Fast' = the fast tier).
  */
-export function detailCell(extentKm: number, detail: Detail, tier?: string): { cellM: number; n: number; cells: number; coarsened: boolean; twoD: boolean; windAuto: boolean } {
+export function detailCell(extentKm: number, detail: Detail, tier?: string, desktop?: DesktopDetailLevel | null): { cellM: number; n: number; cells: number; coarsened: boolean; twoD: boolean; windAuto: boolean } {
   const extentM = extentKm * 1000;
   const t = detail === 'fast' ? 'fast' : tier;
-  const built = builtFireCell(extentM, DETAIL_CELL[detail], t);
+  const built = builtFireCell(extentM, DETAIL_CELL[detail], t, desktop ?? undefined);
   const n = Math.round(extentM / built.cellM);
   // 'Auto' (the default performance setting) decides when the run starts: it times the 3-D air on this phone and keeps it
   // unless a whole run would take far too long (about 10 minutes of computing for 6 hours of fire), so 3-D is the usual outcome.
@@ -344,9 +350,9 @@ export function windHint(c: Pick<ReturnType<typeof detailCell>, 'twoD' | 'windAu
 }
 
 /** Chip labels of the detail picker for an area and tier: each names the cell size that option really builds ("Normal · 20 m"). */
-export function detailChoices(extentKm: number, tier?: string): { value: Detail; label: string }[] {
+export function detailChoices(extentKm: number, tier?: string, desktop?: DesktopDetailLevel | null): { value: Detail; label: string }[] {
   return (['fast', 'normal', 'detailed'] as const).map((value) => {
-    const c = detailCell(extentKm, value, tier);
+    const c = detailCell(extentKm, value, tier, desktop);
     return { value, label: `${DETAIL_OPTIONS[value].label} · ${c.cellM} m${c.twoD ? ' 2-D' : ''}` };
   });
 }

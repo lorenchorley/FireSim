@@ -51,6 +51,14 @@ async function buildSlow(page: Page): Promise<void> {
   await page.getByTestId('duration').getByRole('radio', { name: /^12/ }).check({ force: true });
   await page.getByTestId('build').click();
   await expect(page.getByTestId('sim')).toBeVisible({ timeout: 240_000 });
+  // The drawing is skipped (the frame loop, the clock, the engine and the tracker run as they do; as wind-glyphs.spec.ts does): the page's animation frames come at the
+  // pace of the software GL's frames, which beside another browser are 2 to 4 s apart (measured here, two workers and a busy loop: 1 to 4 frames in 5 s for 140 s), and the
+  // tracker drops its window at every frame more than 2 s after the one before it (paceModel.ts `gapMs`: the display, not the simulation, is slow) and waits 15 s again,
+  // so the tracker published nothing for the first two minutes there (until the other worker's test was over) and in the gate's full run the signal did not come within
+  // 240 s. Nothing in this test looks at a picture.
+  await page.evaluate(() => {
+    (window as unknown as { __firesim: { view: { renderer: { render: () => void } } } }).__firesim.view.renderer.render = () => undefined;
+  });
 }
 
 /** The button's hit area: every probe point 21 px from its centre (and the diagonals at 15 px) lands on the button, like scripts/audit-tap-targets.mjs. */
@@ -122,7 +130,9 @@ test('real engine, slow tier, played at 3600x: the signal appears after the wait
   await expect(page.getByTestId('pace-lead')).toBeVisible({ timeout: 30_000 });
   await expect(sheet.getByRole('heading', { name: 'Running slower than playback' })).toBeVisible();
   const lead = (await page.getByTestId('pace-lead').innerText()).replace(/\s+/g, ' ');
-  expect(lead).toMatch(/^(You asked for 3600× \(1 hour of fire every second\)\. This phone is computing about \d+× right now, so playback waits for the simulation (about \d+ seconds? in every 10|almost all the time|now and then)\.|Computing about \d+×; you asked for 3600×\. )/);
+  // The rate is the machine's, so its number is not whole when the machine is slow: `niceSpeed` keeps one decimal below 10× and steps of 0.05 below 1× (a loaded run, two workers
+  // and a busy loop, read "computing about 9.5× right now, so playback waits for the simulation almost all the time" where the pattern had `\d+×`).
+  expect(lead).toMatch(/^(You asked for 3600× \(1 hour of fire every second\)\. This phone is computing about \d+(\.\d+)?× right now, so playback waits for the simulation (about \d+ seconds? in every 10|almost all the time|now and then)\.|Computing about \d+(\.\d+)?×; you asked for 3600×\. )/);
   await expect(page.getByTestId('pace-result')).toContainText('Does it change the result?');
   await expect(page.getByTestId('pace-result')).toContainText('No. The same choices give the same fire at any speed. It only takes longer to appear.');
   await expect(page.getByTestId('pace-actions')).toBeVisible();

@@ -1,0 +1,2083 @@
+From 70ebc2a6569748b899d48ed98938c119a13ff681 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 07:24:16 +0000
+Subject: [PATCH 1/5] Study 15c step 2: the plan and scripts for the
+ grid-difference ladder (30, 20, 10 m rows, aggregation, scoring)
+
+Scripts that run the quality map's standard scenario at 30, 20 and 10 m with the
+per-cell arrival time saved, aggregate the rows into one small container per site
+and score whether the complexity score predicts where the grids differ. The plan,
+including the development and hold-out sites and what counts as a positive result,
+is committed before any 10 m or 20 m row is scored. Nothing under src/ changes.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ .../01-grid-difference/README.md              |  48 ++
+ .../scripts/10_ladder.launch.mjs              |  56 +++
+ .../scripts/10_ladder.row.ts                  | 143 ++++++
+ .../scripts/11_ladder.batch.mjs               |  52 ++
+ .../scripts/12_aggregate.run.ts               | 151 ++++++
+ .../scripts/13_score.run.ts                   | 463 ++++++++++++++++++
+ .../scripts/lib/ladderio.ts                   |  58 +++
+ .../scripts/lib/stats.ts                      | 156 ++++++
+ 8 files changed, 1127 insertions(+)
+ create mode 100644 studies/adaptive-simulation-quality/01-grid-difference/README.md
+ create mode 100644 studies/adaptive-simulation-quality/scripts/10_ladder.launch.mjs
+ create mode 100644 studies/adaptive-simulation-quality/scripts/10_ladder.row.ts
+ create mode 100644 studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs
+ create mode 100644 studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts
+ create mode 100644 studies/adaptive-simulation-quality/scripts/13_score.run.ts
+ create mode 100644 studies/adaptive-simulation-quality/scripts/lib/ladderio.ts
+ create mode 100644 studies/adaptive-simulation-quality/scripts/lib/stats.ts
+
+diff --git a/studies/adaptive-simulation-quality/01-grid-difference/README.md b/studies/adaptive-simulation-quality/01-grid-difference/README.md
+new file mode 100644
+index 0000000..d4b263b
+--- /dev/null
++++ b/studies/adaptive-simulation-quality/01-grid-difference/README.md
+@@ -0,0 +1,48 @@
++# Study 01: does the complexity score predict where 30 m and finer results differ?
++
++**Status: in progress.** The plan below was committed before any 10 m or 20 m row was scored. The results are added after it.
++
++**Question** (plan section 15c, the next step the desk analysis named; contract 0.10.0 section 4.4). The quality map of the
++[topic page](../README.md) scores every 30 m cell for how complex its terrain is (steepness, cliffs, gullies, landform, 10 m relief), a first definition that was
++never tuned and never checked against an error measure. A fire mesh that is finer only where that score is high would pay off only if the 30 m and the finer answers
++differ mostly where the score is high. This study runs the same scenario at 30, 20 and 10 m and measures that.
++
++**What this does not do.** It builds no refinement and changes nothing under `src/`. It measures one thing: where the arrival times of two grids differ and whether the
++score points there. It does not say that the finer grid is right (that is the validity work, 15d), and it cannot say how much of a difference a local refinement would remove.
++
++## Plan (fixed before the 10 m and 20 m rows were scored)
++
++**Runs.** The standard scenario of the quality map (`scripts/01_baseline.run.ts`): a 6 km square of a bundled site, the preset "hot NW wind ahead of a SW change" from its canonical
++11:00, the fast tier, one point ignition of 30 m radius at t = 0 (the same point at every cell size: the flammable cell of the 30 m grid with slope under 10 degrees nearest to 1500 m west and
++1500 m north of the centre), 8 simulated hours, seed 1. Fire cells of 30, 20 and 10 m (`scripts/10_ladder.row.ts`; 10 m and 20 m by the same in-memory patch of the builder's
++high-detail cell that the desktop-simulation study 01 uses, `scripts/10_ladder.launch.mjs`; `src/` is not changed). Two settings of the embers: **on** (the standard scenario as the quality map ran it) and **off**
++(a control: with embers on, a change of cell size also changes the random draws, so a difference mixes the grid and chance; with embers off the differences are the grid alone). Both are reported, and the choice
++between them is not made after looking. A second seed at 30 m with embers on gives the size of the difference that chance alone makes. Six sites, one realisation per row.
++
++**Sites and the hold-out.** Development sites, the only ones on which anything may be chosen: **Katoomba, Thredbo, Warrumbungles**. Hold-out sites, scored once after the choices are frozen: **Blackheath (Grose Valley, `grose`), Kanangra Walls, Mount Tomah**.
++The complexity score as defined (the plain mean of the five groups) was never fitted to any run, so it is scored as it is on every site. Anything that is changed, here only a re-weighting of the five groups fitted on the three
++development sites, is scored on the hold-out sites only. This script was committed before the hold-out sites were scored.
++
++**The difference.** For a cell, D = the absolute difference in minutes between the arrival times of the two grids, each capped at the horizon H (a cell the front has not reached by H counts as H, so a cell burnt in one run and not in the
++other has a difference of at least the time left). The main case: the 30 m grid, the 30 m run against the 10 m run (a 30 m cell holds 3 x 3 cells of 10 m: the mean of their capped arrival times), H = 8 h. Scored cells: cells that can burn in the 30 m model
++and that either run reaches by H. Other cases: H = 4 h (about the time the wind change arrives); 60 m blocks for 30 m against 20 m, 20 m against 10 m and 30 m against 10 m (20 m cells do not tile the 30 m grid).
++**The local difference** E: the size of the gradient of the signed difference over the 30 m cells (central differences, minutes per cell), over cells that both runs reach fully with all four neighbours too. A difference piles up along the
++fire's path, so D says where a gap has grown and E where it was made.
++
++**The predictors.** The score as defined and each of its five groups alone (S steepness, C cliff, G gully, L landform, R 10 m relief); two baselines that carry no terrain complexity: the 30 m slope, and the arrival time itself (gaps grow with time).
++
++**The measures** (per site, per embers setting): (1) Spearman rank correlation of the score with D over the scored cells, and the same with the arrival time held fixed; (2) the **share of the summed difference that the top-20 % set carries**
++(the 20 % of the whole domain with the highest score, as the quality map defines it), with the share the cells of the set would carry by size alone, and the most any set of that size could carry; (3) against **random sets of the same size**, against random sets
++with the same number of cells in each tenth of the arrival-time range, and against **the same set moved elsewhere** on the map (the eight symmetries of the square and wrap-around shifts, which keep the set's shape: complex cells and large differences both come in
++patches, so scattered random sets are too easy a comparison); (4) recall of the cells with the largest D (top 20 % of the scored cells) by the top-20 % set. Draws: 2000 random, 1000 time-matched, 1000 moved, 400 for the correlation; seeded.
++
++**The tuned version.** Weights of the five groups on a grid of step 0.1 (1001 vectors), chosen to maximise the mean rank correlation with D over the development sites (30 m against 10 m, 8 h, both embers settings); its numbers on the hold-out sites are reported next to the score as defined.
++The best single group is chosen the same way.
++
++**What would count as a positive result** (written before the runs): on the hold-out sites the top-20 % set carries clearly more of the difference than the best random set of its size and than the set moved elsewhere, in both embers settings, with a lift well above 1 (a lift of 1 is "no better than chance by size"),
++and the rank correlation is positive on every hold-out site. **A negative result** is a lift near 1, or a correlation that is gone once the arrival time is held fixed, or one that holds in one embers setting only.
++
++## Files
++
++Scripts (all in `../scripts/`): `10_ladder.launch.mjs` and `10_ladder.row.ts` (one row), `11_ladder.batch.mjs` (rows one after the other under the machine's lock), `12_aggregate.run.ts` (full rows to one small container per site),
++`13_score.run.ts` (the measures), `lib/ladderio.ts` and `lib/stats.ts`.
+diff --git a/studies/adaptive-simulation-quality/scripts/10_ladder.launch.mjs b/studies/adaptive-simulation-quality/scripts/10_ladder.launch.mjs
+new file mode 100644
+index 0000000..9f2d014
+--- /dev/null
++++ b/studies/adaptive-simulation-quality/scripts/10_ladder.launch.mjs
+@@ -0,0 +1,56 @@
++// Runs ONE row of the grid-difference study (10_ladder.row.ts) in its own Node process: the repository's own Vite loads the
++// TypeScript of src/ as it is (no new dependency, nothing under src/ is changed or imports from here).
++//
++//   node --expose-gc studies/adaptive-simulation-quality/scripts/10_ladder.launch.mjs <spec.json> <out.json>
++//
++// The only override lives HERE, as a text patch of src/scenario/params.ts seen by this process alone (the same one the study
++// desktop-simulation/01-cost-vs-detail uses): for a 10 m row `highDetailCellM: 20` becomes 10, because the scenario builder
++// returns the "high detail" cell for any request of 20 m or finer and 10 m is the finest the bundled 10 m terrain allows.
++// A 20 m row needs no patch (20 m is the High-detail cell as shipped, allowed up to a 6 km domain), a 30 m row neither.
++import { createServer } from 'vite';
++import { readFileSync, writeFileSync } from 'node:fs';
++import { resolve, dirname } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const here = dirname(fileURLToPath(import.meta.url));
++const root = resolve(here, '../../..');
++const [specPath, outPath] = process.argv.slice(2);
++if (!specPath || !outPath) throw new Error('usage: 10_ladder.launch.mjs <spec.json> <out.json>');
++const spec = JSON.parse(readFileSync(specPath, 'utf8'));
++
++function patchParams() {
++  return {
++    name: 'study-patch-scenario-params',
++    enforce: 'pre',
++    transform(code, id) {
++      if (!/[\\/]src[\\/]scenario[\\/]params\.ts$/.test(id.split('?')[0])) return null;
++      if (spec.cell !== 10) return null;
++      const from = 'highDetailCellM: 20,';
++      if (!code.includes(from)) throw new Error(`params.ts no longer contains "${from}": update the patch`);
++      return { code: code.replace(from, 'highDetailCellM: 10,'), map: null };
++    },
++  };
++}
++
++const server = await createServer({
++  root,
++  configFile: false,
++  logLevel: 'error',
++  appType: 'custom',
++  server: { middlewareMode: true, hmr: false, watch: null },
++  optimizeDeps: { noDiscovery: true, include: [] },
++  resolve: { alias: { '@': resolve(root, 'src') } },
++  plugins: [patchParams()],
++});
++let result;
++try {
++  const mod = await server.ssrLoadModule('/studies/adaptive-simulation-quality/scripts/10_ladder.row.ts');
++  result = await mod.default(spec);
++} catch (e) {
++  result = { spec, error: String(e && e.stack ? e.stack : e) };
++} finally {
++  await server.close();
++}
++writeFileSync(outPath, JSON.stringify(result));
++console.log(result.error ? `FAILED ${spec.id}: ${String(result.error).split('\n')[0]}` : `ok ${spec.id}`);
++process.exit(result.error ? 1 : 0);
+diff --git a/studies/adaptive-simulation-quality/scripts/10_ladder.row.ts b/studies/adaptive-simulation-quality/scripts/10_ladder.row.ts
+new file mode 100644
+index 0000000..85e91f8
+--- /dev/null
++++ b/studies/adaptive-simulation-quality/scripts/10_ladder.row.ts
+@@ -0,0 +1,143 @@
++/**
++ * One row of the grid-difference study: the standard scenario of the quality map (01_baseline.run.ts: 6 km square of a bundled site,
++ * the preset "hot-nw-sw-change" from its canonical 11:00, the fast tier, one point ignition of 30 m radius at t = 0, 8 simulated hours)
++ * at ONE fire cell size (30, 20 or 10 m), with embers on or off and one seed, and the per-cell arrival time of the finished run saved.
++ * Loaded by 10_ladder.launch.mjs through the repository's own Vite (so src/ is imported as it is). Not built, not shipped.
++ *
++ * The ignition is the same point at every cell size: the flammable cell of the 30 m grid with slope30 under 10 degrees nearest to
++ * (-1500, 1500) m from the domain centre, exactly as 01_baseline.run.ts picks it. A row of another cell size therefore first builds
++ * the 30 m scenario and a Simulation (constructor only, no run) to read that point.
++ *
++ * Saved (a `saveFields` container, lib/io.ts): `arrival` (s, Infinity = not reached in the window) and `flammable` on the row's own
++ * grid, and for a 30 m row also the static terrain measures the complexity score is made from (the same arrays 01_baseline.run.ts saves).
++ * The row's result (JSON) carries the grid, the ignition, the burnt area and perimeter every 30 min, the spot-fire count, wall time and memory.
++ */
++import { createMemoryKV, DEMO_SITES, setDefaultCache } from '../../../src/data';
++import { buildScenario } from '../../../src/scenario/build';
++import { WEATHER_PRESETS } from '../../../src/scenario/presets';
++import { BurnState, type ScenarioData } from '../../../src/core/types';
++import { Simulation } from '../../../src/sim/simulation';
++import { saveFields, type Arr } from './lib/io';
++import { shape10 } from './lib/terrain10';
++
++export interface LadderSpec {
++  id: string;
++  site: string;
++  /** Fire cell (m): 30, 20 or 10. */
++  cell: 30 | 20 | 10;
++  embers: boolean;
++  seed: number;
++  hours: number;
++  /** Where the raster container is written. */
++  rasterPath: string;
++}
++
++const PRESET = 'hot-nw-sw-change' as const;
++const EXTENT = 6000;
++const IGN_TARGET: [number, number] = [-1500, 1500];
++const IGN_RADIUS_M = 30;
++const mb = (b: number): number => Math.round((b / 1048576) * 10) / 10;
++
++async function build(spec: LadderSpec, cell: number): Promise<ScenarioData> {
++  setDefaultCache(createMemoryKV());
++  const site = DEMO_SITES.find((s) => s.id === spec.site);
++  if (!site) throw new Error(`unknown site ${spec.site}`);
++  const start = WEATHER_PRESETS[PRESET].canonicalStart(site.centre.lon, 2026);
++  return buildScenario({
++    centre: site.centre,
++    extent: EXTENT,
++    demoSiteId: spec.site,
++    weather: { kind: 'preset', presetId: PRESET, start },
++    duration: spec.hours * 3600,
++    online: false,
++    options: { tier: 'fast', seed: spec.seed, embers: spec.embers, ...(cell === 30 ? {} : { fireCellSize: cell }) },
++  });
++}
++
++export default async function run(spec: LadderSpec): Promise<Record<string, unknown>> {
++  const out: Record<string, unknown> = { spec, node: process.version };
++  const t0 = performance.now();
++
++  // The 30 m scenario: the ignition point (and, for a 30 m row, the run itself and the static terrain measures).
++  const sc30 = await build(spec, 30);
++  const g30 = sc30.terrain.grid;
++  const sim30 = new Simulation(sc30, { tier: 'fast' });
++  const v30 = sim30.stateView();
++  let best = -1;
++  let bestD = Infinity;
++  for (let j = 0; j < g30.ny; j++) {
++    for (let i = 0; i < g30.nx; i++) {
++      const k = j * g30.nx + i;
++      if (v30.fire.burnState[k] === BurnState.NonFlammable || v30.features.slope30[k]! >= 10) continue;
++      const d = Math.hypot(g30.x0 + i * g30.cellSize - IGN_TARGET[0], g30.y0 + j * g30.cellSize - IGN_TARGET[1]);
++      if (d < bestD) {
++        bestD = d;
++        best = k;
++      }
++    }
++  }
++  if (best < 0) throw new Error('no ignition cell');
++  const ign = { x: g30.x0 + (best % g30.nx) * g30.cellSize, y: g30.y0 + Math.floor(best / g30.nx) * g30.cellSize };
++  out.ignition = ign;
++  out.ignitionTargetDistM = bestD;
++
++  const extra: Record<string, Arr> = {};
++  if (spec.cell === 30) {
++    if (!sc30.terrainHiRes) throw new Error('no 10 m DEM in the scenario');
++    const n30 = g30.nx * g30.ny;
++    const feats = v30.features;
++    const terr = v30.terrain;
++    const sh = shape10(g30, sc30.terrainHiRes);
++    extra.slope30 = Float32Array.from(feats.slope30);
++    extra.slopeP90 = Float32Array.from(terr.slopeP90Deg ?? new Float32Array(n30));
++    extra.cliffFrac = Float32Array.from(terr.cliffFraction ?? new Float32Array(n30));
++    extra.landform = Uint8Array.from(terr.landform);
++    extra.drainage = Uint8Array.from(feats.drainage);
++    extra.trench = Float32Array.from(feats.trench);
++    extra.rough10 = sh.rough10;
++    extra.curv10 = sh.curv10;
++  }
++
++  // The row's own scenario and simulation.
++  let scenario = sc30;
++  let sim = sim30;
++  if (spec.cell !== 30) {
++    scenario = await build(spec, spec.cell);
++    sim = new Simulation(scenario, { tier: 'fast' });
++  }
++  const g = scenario.terrain.grid;
++  const n = g.nx * g.ny;
++  if (g.cellSize !== spec.cell || g.nx * g.cellSize !== EXTENT) throw new Error(`grid is ${g.nx} x ${g.ny} of ${g.cellSize} m, not ${spec.cell} m over ${EXTENT} m`);
++  out.grid = { nx: g.nx, ny: g.ny, cellSize: g.cellSize, x0: g.x0, y0: g.y0 };
++  out.buildS = (performance.now() - t0) / 1000;
++  const flammable = new Uint8Array(n);
++  const vS = sim.stateView();
++  for (let k = 0; k < n; k++) flammable[k] = vS.fire.burnState[k] === BurnState.NonFlammable ? 0 : 1;
++
++  sim.ignite({ id: 'ladder', kind: 'point', points: [[ign.x, ign.y]], time: 0, radius: IGN_RADIUS_M, origin: 'observed' });
++  const series: { t: number; burntHa: number; perimeterKm: number; headRos: number; spots: number; wallS: number }[] = [];
++  let peakRss = process.memoryUsage().rss;
++  const tRun = performance.now();
++  const chunk = 300;
++  for (let t = chunk; t <= spec.hours * 3600 + 1e-6; t += chunk) {
++    sim.advance(t);
++    peakRss = Math.max(peakRss, process.memoryUsage().rss);
++    if (t % 1800 === 0) {
++      const st = sim.stats();
++      series.push({ t, burntHa: st.burntAreaHa, perimeterKm: st.perimeterKm, headRos: st.headRos, spots: st.spotFires, wallS: (performance.now() - tRun) / 1000 });
++    }
++  }
++  out.runS = (performance.now() - tRun) / 1000;
++  out.peakRssMB = mb(Math.max(peakRss, process.resourceUsage().maxRSS * 1024));
++  out.series = series;
++  out.options = { embers: sim.options.embers, seed: spec.seed, maxEmbers: sim.options.maxEmbers, mountainPhenomena: sim.options.mountainPhenomena };
++  const arrival = Float32Array.from(sim.stateView().fire.arrivalTime);
++  let reached = 0;
++  for (let k = 0; k < n; k++) if (Number.isFinite(arrival[k]!)) reached++;
++  out.reachedCells = reached;
++  out.flammableCells = flammable.reduce((s, v) => s + v, 0);
++  out.cells = n;
++  const bytes = saveFields(spec.rasterPath, { id: spec.id, site: spec.site, grid: out.grid, ignition: ign }, { arrival, flammable, ...extra });
++  out.rasterBytes = bytes;
++  return out;
++}
+diff --git a/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs b/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs
+new file mode 100644
+index 0000000..b16543a
+--- /dev/null
++++ b/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs
+@@ -0,0 +1,52 @@
++// Runs the rows of the grid-difference study one after the other, each in its own Node process and each under the machine's shared
++// heavy-job lock (so another job can take its turn between two rows; a 10 m row of 8 simulated hours takes minutes and about 1.2 GB).
++//
++//   setsid nohup node studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs <outdir> <log> [sites] [cells] [flavours] &
++//     sites     comma list (default: the six sites of the study, in run order)
++//     cells     comma list of fire cells (default 30,20,10)
++//     flavours  comma list of: off (embers off), on (embers on, seed 1), on2 (embers on, seed 2; 30 m only) (default off,on,on2)
++//   The last line of <log> is "DONE" when the batch has finished. A row whose raster file exists is skipped, so an interrupted
++//   batch can be started again. Row ids are <site>.<cell>m.<flavour>.
++import { spawnSync } from 'node:child_process';
++import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
++import { resolve, dirname } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const here = dirname(fileURLToPath(import.meta.url));
++const root = resolve(here, '../../..');
++const [outDir, logPath, sitesArg, cellsArg, flavArg] = process.argv.slice(2);
++if (!outDir || !logPath) throw new Error('usage: 11_ladder.batch.mjs <outdir> <log> [sites] [cells] [flavours]');
++mkdirSync(outDir, { recursive: true });
++const SITES = (sitesArg ?? 'katoomba,thredbo,warrumbungles,grose,kanangra,tomah').split(',');
++const CELLS = (cellsArg ?? '30,20,10').split(',').map(Number);
++const FLAV = (flavArg ?? 'off,on,on2').split(',');
++const HOURS = 8;
++const log = (s) => appendFileSync(logPath, `${new Date().toISOString().slice(11, 19)} ${s}\n`);
++
++const rows = [];
++for (const site of SITES) {
++  // cheap rows first, the 10 m rows last: a stopped batch still leaves the 30 m and 20 m data of every site finished so far
++  for (const cell of [30, 20, 10]) {
++    if (!CELLS.includes(cell)) continue;
++    for (const f of FLAV) {
++      if (f === 'on2' && cell !== 30) continue;
++      rows.push({ id: `${site}.${cell}m.${f}`, site, cell, embers: f !== 'off', seed: f === 'on2' ? 2 : 1, hours: HOURS });
++    }
++  }
++}
++log(`batch of ${rows.length} rows`);
++for (const spec of rows) {
++  const raster = resolve(outDir, `${spec.id}.fields.gz`);
++  const out = resolve(outDir, `${spec.id}.json`);
++  if (existsSync(raster) && existsSync(out)) {
++    log(`skip ${spec.id} (done)`);
++    continue;
++  }
++  const specFile = resolve(outDir, `${spec.id}.spec.json`);
++  writeFileSync(specFile, JSON.stringify({ ...spec, rasterPath: raster }));
++  log(`start ${spec.id} (waits for the lock)`);
++  const t = Date.now();
++  const r = spawnSync('flock', ['/tmp/firesim-heavy.lock', 'node', '--expose-gc', '--max-old-space-size=4096', resolve(here, '10_ladder.launch.mjs'), specFile, out], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 26 });
++  log(`end ${spec.id} after ${Math.round((Date.now() - t) / 1000)} s incl. lock wait, status ${r.status}: ${(r.stdout || '').trim().split('\n').pop()} ${(r.stderr || '').trim().split('\n').slice(-3).join(' | ')}`);
++}
++appendFileSync(logPath, 'DONE\n');
+diff --git a/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts b/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts
+new file mode 100644
+index 0000000..1971b16
+--- /dev/null
++++ b/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts
+@@ -0,0 +1,151 @@
++/**
++ * Step 4 (after 10_ladder / 11_ladder.batch): from the full-resolution rows in `work/` build ONE small container per site,
++ * `data/ladder-<site>.gz`, that holds everything 13_score.run.ts needs and nothing else:
++ *   - the five complexity groups of the quality map (lib/analysis.ts, `complexity()`), at the 30 m grid, as 16-bit rasters
++ *     (resolution 1/65535; the score itself is the mean of the five and is made by the scorer), the 30 m slope, the flammable masks;
++ *   - per embers setting (`on` = embers on, seed 1; `off` = embers off) and per horizon H (4 h, 8 h): the arrival time of every row
++ *     capped at H (a cell not reached by H counts as H) on two common grids: the 30 m grid (the 30 m row as it is; the 10 m row as
++ *     the mean of the 3 x 3 cells inside each 30 m cell) and 60 m blocks (every row as the mean of the cells inside the block), with
++ *     the number of cells reached by H;
++ *   - the run records (burnt area every 30 min, wall time, memory, spot fires).
++ * 20 m cells do not tile the 30 m grid (1.5 cells), so the 20 m row is compared on the 60 m blocks only.
++ *
++ *   AQ_WORK=<dir with the rows> AQ_SITES=katoomba,... npx vitest run --config studies/adaptive-simulation-quality/vitest.config.ts 12_aggregate
++ */
++import { existsSync, mkdirSync, readFileSync } from 'node:fs';
++import { it } from 'vitest';
++import { complexity, type Fields } from './lib/analysis';
++import { loadFields } from './lib/io';
++import { saveLadder, type LadderSet } from './lib/ladderio';
++
++const SITES = (process.env.AQ_SITES ?? 'katoomba,thredbo,warrumbungles,grose,kanangra,tomah').split(',');
++const WORK = process.env.AQ_WORK ?? new URL('../work/ladder/', import.meta.url).pathname;
++const DATA = new URL('../data/', import.meta.url).pathname;
++const HORIZONS_S = [4 * 3600, 8 * 3600] as const;
++const log = (s: string): void => {
++  process.stderr.write(`[aggregate] ${s}\n`);
++};
++
++interface Row {
++  arrival: Float32Array;
++  flammable: Uint8Array;
++  meta: { grid: { nx: number; ny: number; cellSize: number; x0: number; y0: number }; ignition: { x: number; y: number } };
++  a: Record<string, unknown>;
++  out: Record<string, unknown>;
++}
++
++function loadRow(id: string): Row | null {
++  const raster = `${WORK}${id}.fields.gz`;
++  const json = `${WORK}${id}.json`;
++  if (!existsSync(raster) || !existsSync(json)) return null;
++  const { meta, a } = loadFields<Row['meta']>(raster);
++  return { arrival: a.arrival as Float32Array, flammable: a.flammable as Uint8Array, meta, a, out: JSON.parse(readFileSync(json, 'utf8')) as Record<string, unknown> };
++}
++
++/** Blocks of f x f cells: the mean of min(arrival, H) (s, rounded) and the number of cells with arrival < H. */
++function blocks(arrival: Float32Array, nx: number, f: number, H: number): { mean: Uint16Array; count: Uint8Array; nb: number } {
++  const nb = nx / f;
++  if (!Number.isInteger(nb)) throw new Error(`${nx} cells do not divide into blocks of ${f}`);
++  const mean = new Uint16Array(nb * nb);
++  const count = new Uint8Array(nb * nb);
++  for (let bj = 0; bj < nb; bj++) {
++    for (let bi = 0; bi < nb; bi++) {
++      let s = 0;
++      let c = 0;
++      for (let dj = 0; dj < f; dj++) {
++        for (let di = 0; di < f; di++) {
++          const t = arrival[(bj * f + dj) * nx + bi * f + di]!;
++          if (t < H) {
++            s += t;
++            c++;
++          } else s += H;
++        }
++      }
++      mean[bj * nb + bi] = Math.round(s / (f * f));
++      count[bj * nb + bi] = c;
++    }
++  }
++  return { mean, count, nb };
++}
++
++const q16 = (a: Float32Array): Uint16Array => Uint16Array.from(a, (v) => Math.round(Math.min(1, Math.max(0, v)) * 65535));
++
++it('aggregate the ladder rows into one container per site', () => {
++  mkdirSync(DATA, { recursive: true });
++  for (const site of SITES) {
++    const base = loadRow(`${site}.30m.on`) ?? loadRow(`${site}.30m.off`);
++    if (!base || !base.a.slope30) {
++      log(`${site}: no 30 m row with the terrain measures, skipped`);
++      continue;
++    }
++    const g = base.meta.grid;
++    const n = g.nx * g.ny;
++    const comp = complexity({ ...(base.a as unknown as Fields) });
++    const set: LadderSet = { meta: { site, grid30: g, windowS: 8 * 3600, horizonsS: HORIZONS_S, ignition: base.meta.ignition, runs: {} as Record<string, unknown>, complexityNote: 'S, C, G, L, R of lib/analysis.ts complexity(), 16-bit (1/65535); score = their mean' }, u8: {}, u16: {} };
++    const runs = set.meta.runs as Record<string, unknown>;
++    set.u16.S = [q16(comp.S), g.nx];
++    set.u16.C = [q16(comp.C), g.nx];
++    set.u16.G = [q16(comp.G), g.nx];
++    set.u16.L = [q16(comp.L), g.nx];
++    set.u16.R = [q16(comp.R), g.nx];
++    set.u16.slope30 = [Uint16Array.from(base.a.slope30 as Float32Array, (v) => Math.round(Math.min(300, v) * 200)), g.nx];
++    set.u8.flam30 = base.flammable;
++    let flam10: Uint8Array | null = null;
++    for (const flav of ['on', 'off', 'on2']) {
++      const r30 = loadRow(`${site}.30m.${flav}`);
++      if (!r30) continue;
++      runs[`30m.${flav}`] = { ...slim(r30.out) };
++      // The 30 m row as it is, on the 30 m grid (only the on / off rows are compared across grids; on2 is the seed reference at 30 m).
++      for (const H of HORIZONS_S) {
++        const b30 = blocks(r30.arrival, g.nx, 1, H);
++        set.u16[`g30.30.${flav}.${H / 3600}h`] = [b30.mean, g.nx];
++        set.u8[`n30.30.${flav}.${H / 3600}h`] = b30.count;
++        if (flav === 'on2') continue;
++        const b60 = blocks(r30.arrival, g.nx, 2, H);
++        set.u16[`g60.30.${flav}.${H / 3600}h`] = [b60.mean, b60.nb];
++        set.u8[`n60.30.${flav}.${H / 3600}h`] = b60.count;
++      }
++      if (flav === 'on2') continue;
++      const r20 = loadRow(`${site}.20m.${flav}`);
++      const r10 = loadRow(`${site}.10m.${flav}`);
++      if (r20) {
++        runs[`20m.${flav}`] = slim(r20.out);
++        for (const H of HORIZONS_S) {
++          const b60 = blocks(r20.arrival, r20.meta.grid.nx, 3, H);
++          set.u16[`g60.20.${flav}.${H / 3600}h`] = [b60.mean, b60.nb];
++          set.u8[`n60.20.${flav}.${H / 3600}h`] = b60.count;
++        }
++      }
++      if (r10) {
++        runs[`10m.${flav}`] = slim(r10.out);
++        const nx10 = r10.meta.grid.nx;
++        if (nx10 !== 3 * g.nx) throw new Error(`${site} 10 m grid ${nx10} is not 3 x ${g.nx}`);
++        if (!flam10) {
++          flam10 = new Uint8Array(n);
++          for (let bj = 0; bj < g.ny; bj++) for (let bi = 0; bi < g.nx; bi++) {
++            let c = 0;
++            for (let dj = 0; dj < 3; dj++) for (let di = 0; di < 3; di++) c += r10.flammable[(bj * 3 + dj) * nx10 + bi * 3 + di]!;
++            flam10[bj * g.nx + bi] = c;
++          }
++          set.u8.flam10in30 = flam10;
++        }
++        for (const H of HORIZONS_S) {
++          const b30 = blocks(r10.arrival, nx10, 3, H);
++          set.u16[`g30.10.${flav}.${H / 3600}h`] = [b30.mean, g.nx];
++          set.u8[`n30.10.${flav}.${H / 3600}h`] = b30.count;
++          const b60 = blocks(r10.arrival, nx10, 6, H);
++          set.u16[`g60.10.${flav}.${H / 3600}h`] = [b60.mean, b60.nb];
++          set.u8[`n60.10.${flav}.${H / 3600}h`] = b60.count;
++        }
++      }
++    }
++    const bytes = saveLadder(`${DATA}ladder-${site}.gz`, set);
++    log(`${site}: ${Object.keys(set.u16).length} 16-bit and ${Object.keys(set.u8).length} byte rasters, ${(bytes / 1024).toFixed(0)} kB, runs ${Object.keys(runs).join(' ')}`);
++  }
++}, 600_000);
++
++/** The part of a row's record that is kept: burnt area every 30 min, wall time, memory, ignition, cells reached. */
++function slim(o: Record<string, unknown>): Record<string, unknown> {
++  const keep = ['series', 'runS', 'buildS', 'peakRssMB', 'reachedCells', 'flammableCells', 'cells', 'options', 'ignition', 'ignitionTargetDistM', 'grid', 'rasterBytes'];
++  return Object.fromEntries(keep.filter((k) => k in o).map((k) => [k, k === 'series' ? (o.series as { t: number; burntHa: number; perimeterKm: number; headRos: number; spots: number; wallS: number }[]).map((s) => ({ t: s.t, burntHa: Math.round(s.burntHa), perimeterKm: Math.round(s.perimeterKm * 10) / 10, headRos: Math.round(s.headRos * 100) / 100, spots: s.spots, wallS: Math.round(s.wallS * 10) / 10 })) : o[k]]));
++}
+diff --git a/studies/adaptive-simulation-quality/scripts/13_score.run.ts b/studies/adaptive-simulation-quality/scripts/13_score.run.ts
+new file mode 100644
+index 0000000..072e0e3
+--- /dev/null
++++ b/studies/adaptive-simulation-quality/scripts/13_score.run.ts
+@@ -0,0 +1,463 @@
++/**
++ * Step 5: does the complexity score of the quality map predict where the arrival time differs between fire grids?
++ * Reads ONLY the committed containers `data/ladder-<site>.gz` (12_aggregate.run.ts), so every number can be re-made without a
++ * simulation. Writes `data/ladder-scores.json` (all numbers) and `data/ladder-tables.md` (the tables of the study note).
++ *
++ *   npx vitest run --config studies/adaptive-simulation-quality/vitest.config.ts 13_score
++ *   AQ_SITES=katoomba,thredbo limits the sites (the split below is fixed in this file, before any run was scored).
++ *
++ * THE PLAN (fixed before any 10 m or 20 m row was scored; see the study note, section Plan):
++ *   - Difference D of a cell = |arrival of the finer grid - arrival of the 30 m grid| in minutes, each arrival capped at the horizon H
++ *     (a cell the front has not reached by H counts as H, so "burnt in one run, not in the other" is a difference of at least the
++ *     time left). Main case: the 30 m grid, 30 m against 10 m (a 30 m cell holds 3 x 3 cells of 10 m: the mean of their capped
++ *     arrivals), H = 8 h. Scored cells: those that can burn in the 30 m model and are reached by H in at least one of the two runs.
++ *   - Local difference E of a cell: the size of the gradient of the signed difference over the 30 m cells (central differences, minutes per
++ *     cell): where the difference is made, not where it has piled up. Scored cells: fully reached by H in both runs, as are their 4 neighbours.
++ *   - Predictors: the complexity score as defined (the mean of S, C, G, L, R, equal weights; nothing fitted) and each part alone;
++ *     baselines: the 30 m slope and the arrival time itself (differences pile up with time).
++ *   - Measures: Spearman rank correlation over the scored cells; the same with the arrival time held fixed (partial); the share of the
++ *     summed difference carried by the top-20 % set (the 20 % of the whole domain with the highest score, as 01_baseline's quality
++ *     map defines it), against random sets of the same size (and the same number of cells in each tenth of the arrival-time range), and
++ *     against the same set moved elsewhere on the map (the 8 symmetries of the square and wrap-around shifts: it keeps the set's shape).
++ *   - Development sites (the only ones used to choose anything): katoomba, thredbo, warrumbungles. Hold-out sites (scored once, after the
++ *     choice is frozen): grose, kanangra, tomah. Re-weighting the five parts is fitted on the development sites only, then scored on
++ *     the hold-out sites. The score as defined was never fitted to any run, so it is scored on every site.
++ */
++import { existsSync, writeFileSync } from 'node:fs';
++import { it } from 'vitest';
++import { count, topShare } from './lib/analysis';
++import { loadLadder } from './lib/ladderio';
++import { mean, median, partialSpearman, pearson, quantile, randomShares, ranks, rng, spearman, stratifiedShares, transformIndex } from './lib/stats';
++
++export const DEV = ['katoomba', 'thredbo', 'warrumbungles'];
++export const HOLD = ['grose', 'kanangra', 'tomah'];
++const SITES = (process.env.AQ_SITES ?? [...DEV, ...HOLD].join(',')).split(',');
++const DATA = new URL('../data/', import.meta.url).pathname;
++const PARTS = ['S', 'C', 'G', 'L', 'R'] as const;
++const PREDICTORS = ['mean', ...PARTS, 'slope30'] as const;
++type Pred = (typeof PREDICTORS)[number];
++const DRAWS = { random: 2000, timeMatched: 1000, shift: 1000, shiftRho: 400 };
++const TOP = 0.2;
++const log = (s: string): void => {
++  process.stderr.write(`[score] ${s}\n`);
++};
++const r2 = (x: number): number => (Number.isFinite(x) ? Math.round(x * 100) / 100 : x);
++const r3 = (x: number): number => (Number.isFinite(x) ? Math.round(x * 1000) / 1000 : x);
++
++interface SiteData {
++  id: string;
++  nx: number;
++  meta: Record<string, unknown>;
++  parts: Record<(typeof PARTS)[number] | 'mean' | 'slope30', Float64Array>;
++  flam30: Uint8Array;
++  u8: Record<string, Uint8Array>;
++  u16: Record<string, Uint16Array>;
++}
++
++function loadSite(id: string): SiteData | null {
++  const path = `${DATA}ladder-${id}.gz`;
++  if (!existsSync(path)) return null;
++  const { meta, u8, u16 } = loadLadder(path);
++  const nx = (meta.grid30 as { nx: number }).nx;
++  const n = nx * nx;
++  const parts = {} as SiteData['parts'];
++  for (const p of PARTS) parts[p] = Float64Array.from(u16[p]!, (v) => v / 65535);
++  parts.mean = new Float64Array(n);
++  for (let k = 0; k < n; k++) parts.mean[k] = (parts.S[k]! + parts.C[k]! + parts.G[k]! + parts.L[k]! + parts.R[k]!) / 5;
++  parts.slope30 = Float64Array.from(u16.slope30!, (v) => v / 200);
++  return { id, nx, meta, parts, flam30: u8.flam30!, u8, u16 };
++}
++
++interface PairSpec {
++  /** 'g30' (the 30 m grid) or 'g60' (60 m blocks) */
++  grid: 'g30' | 'g60';
++  a: string;
++  b: string;
++  flav: 'on' | 'off';
++  /** the flavour of the second run when it differs (the seed reference) */
++  flavB?: string;
++  H: 4 | 8;
++  /** 'D' = the difference, 'E' = the local difference */
++  metric: 'D' | 'E';
++}
++
++interface Case {
++  site: string;
++  spec: PairSpec;
++  nx: number;
++  N: number;
++  /** scored cell indices */
++  U: Int32Array;
++  /** the metric over the whole grid (0 outside U) */
++  D: Float64Array;
++  /** signed difference y - x, minutes (whole grid) */
++  signed: Float64Array;
++  /** arrival of the first run, minutes (whole grid) */
++  ax: Float64Array;
++  pred: Record<Pred, Float64Array>;
++}
++
++function blockMean(v: Float64Array, nx: number): Float64Array {
++  const nb = nx / 2;
++  const out = new Float64Array(nb * nb);
++  for (let bj = 0; bj < nb; bj++) for (let bi = 0; bi < nb; bi++) out[bj * nb + bi] = (v[2 * bj * nx + 2 * bi]! + v[2 * bj * nx + 2 * bi + 1]! + v[(2 * bj + 1) * nx + 2 * bi]! + v[(2 * bj + 1) * nx + 2 * bi + 1]!) / 4;
++  return out;
++}
++
++function makeCase(s: SiteData, spec: PairSpec): Case | null {
++  const h = `${spec.H}h`;
++  const fB = spec.flavB ?? spec.flav;
++  const kx = `${spec.grid}.${spec.a}.${spec.flav}.${h}`;
++  const ky = `${spec.grid}.${spec.b}.${fB}.${h}`;
++  const cx = `${spec.grid === 'g30' ? 'n30' : 'n60'}.${spec.a}.${spec.flav}.${h}`;
++  const cy = `${spec.grid === 'g30' ? 'n30' : 'n60'}.${spec.b}.${fB}.${h}`;
++  const x16 = s.u16[kx];
++  const y16 = s.u16[ky];
++  const nxC = s.u8[cx];
++  const nyC = s.u8[cy];
++  if (!x16 || !y16 || !nxC || !nyC) return null;
++  const nx = spec.grid === 'g30' ? s.nx : s.nx / 2;
++  const N = nx * nx;
++  const ax = Float64Array.from(x16, (v) => v / 60);
++  const signed = new Float64Array(N);
++  for (let k = 0; k < N; k++) signed[k] = (y16[k]! - x16[k]!) / 60;
++  const flam = new Uint8Array(N);
++  if (spec.grid === 'g30') flam.set(s.flam30);
++  else for (let bj = 0; bj < nx; bj++) for (let bi = 0; bi < nx; bi++) flam[bj * nx + bi] = s.flam30[2 * bj * s.nx + 2 * bi]! | s.flam30[2 * bj * s.nx + 2 * bi + 1]! | s.flam30[(2 * bj + 1) * s.nx + 2 * bi]! | s.flam30[(2 * bj + 1) * s.nx + 2 * bi + 1]!;
++  const fullY = spec.grid === 'g30' ? (spec.b === '10' ? 9 : 1) : spec.b === '10' ? 36 : spec.b === '20' ? 9 : 4;
++  const fullX = spec.grid === 'g30' ? (spec.a === '10' ? 9 : 1) : spec.a === '10' ? 36 : spec.a === '20' ? 9 : 4;
++  const D = new Float64Array(N);
++  const U: number[] = [];
++  if (spec.metric === 'D') {
++    for (let k = 0; k < N; k++) {
++      if (!flam[k] || (nxC[k]! === 0 && nyC[k]! === 0)) continue;
++      D[k] = Math.abs(signed[k]!);
++      U.push(k);
++    }
++  } else {
++    const ok = new Uint8Array(N);
++    for (let k = 0; k < N; k++) ok[k] = flam[k] && nxC[k]! === fullX && nyC[k]! === fullY ? 1 : 0;
++    for (let j = 1; j < nx - 1; j++) {
++      for (let i = 1; i < nx - 1; i++) {
++        const k = j * nx + i;
++        if (!(ok[k] && ok[k - 1] && ok[k + 1] && ok[k - nx] && ok[k + nx])) continue;
++        D[k] = Math.hypot((signed[k + 1]! - signed[k - 1]!) / 2, (signed[k + nx]! - signed[k - nx]!) / 2);
++        U.push(k);
++      }
++    }
++  }
++  const pred = {} as Case['pred'];
++  for (const p of PREDICTORS) pred[p] = spec.grid === 'g30' ? s.parts[p] : blockMean(s.parts[p], s.nx);
++  return { site: s.id, spec, nx, N, U: Int32Array.from(U), D, signed, ax, pred };
++}
++
++export interface Stat {
++  n: number;
++  rho: number;
++  rhoPartial: number;
++  setCells: number;
++  setInU: number;
++  sizeShare: number;
++  share: number;
++  lift: number;
++  oracleShare: number;
++  recall: number;
++  recallExpected: number;
++  randomMean: number;
++  randomLo: number;
++  randomHi: number;
++  pRandom?: number;
++  pTimeMatched?: number;
++  pShift?: number;
++  shiftLo?: number;
++  shiftHi?: number;
++  rhoGlobal?: number;
++  rhoShiftLo?: number;
++  rhoShiftHi?: number;
++  pRhoShift?: number;
++}
++
++/** (1 + number of draws at least as large as x) / (1 + draws). */
++const exceed = (sorted: Float64Array, x: number): number => {
++  let lo = 0;
++  let hi = sorted.length;
++  const target = x - 1e-12;
++  while (lo < hi) {
++    const mid = (lo + hi) >> 1;
++    if (sorted[mid]! < target) lo = mid + 1;
++    else hi = mid;
++  }
++  return (1 + sorted.length - lo) / (1 + sorted.length);
++};
++
++function evaluate(c: Case, score: Float64Array, mc: boolean, seed: number): Stat {
++  const { U, D, N, nx } = c;
++  const n = U.length;
++  const sU = Float64Array.from(U, (k) => score[k]!);
++  const dU = Float64Array.from(U, (k) => D[k]!);
++  const aU = Float64Array.from(U, (k) => c.ax[k]!);
++  let total = 0;
++  for (let q = 0; q < n; q++) total += dU[q]!;
++  const set = topShare(score, TOP);
++  let setIn = 0;
++  let carried = 0;
++  for (let q = 0; q < n; q++) if (set[U[q]!]) {
++    setIn++;
++    carried += dU[q]!;
++  }
++  const setCells = count(set);
++  const share = total > 0 ? carried / total : NaN;
++  const sizeShare = n > 0 ? setIn / n : NaN;
++  // the best a set of this size could do: the setCells largest differences
++  const sortedD = Float64Array.from(dU).sort();
++  let best = 0;
++  for (let q = 0; q < Math.min(setCells, n); q++) best += sortedD[n - 1 - q]!;
++  // recall of the cells with the largest differences (top 20 % of the scored cells)
++  const cut = quantile(sortedD, 1 - TOP);
++  let big = 0;
++  let bigIn = 0;
++  for (let q = 0; q < n; q++) if (dU[q]! >= cut && dU[q]! > 0) {
++    big++;
++    if (set[U[q]!]) bigIn++;
++  }
++  const w = new Float64Array(N);
++  if (total > 0) for (let q = 0; q < n; q++) w[U[q]!] = dU[q]! / total;
++  const rand = randomShares(w, setCells, DRAWS.random, rng(seed));
++  const st: Stat = {
++    n,
++    rho: spearman(sU, dU),
++    rhoPartial: partialSpearman(sU, dU, aU),
++    setCells,
++    setInU: setIn,
++    sizeShare,
++    share,
++    lift: sizeShare > 0 ? share / sizeShare : NaN,
++    oracleShare: total > 0 ? best / total : NaN,
++    recall: big ? bigIn / big : NaN,
++    recallExpected: sizeShare,
++    randomMean: mean(rand),
++    randomLo: quantile(rand, 0.025),
++    randomHi: quantile(rand, 0.975),
++  };
++  if (!mc) return st;
++  st.pRandom = exceed(rand, share);
++  // random sets with the same number of cells in each tenth of the arrival-time range of the scored cells (group 10: not scored)
++  const rk = ranks(aU);
++  const group = new Int32Array(N).fill(10);
++  for (let q = 0; q < n; q++) group[U[q]!] = Math.min(9, Math.floor(((rk[q]! - 1) / n) * 10));
++  const want = new Int32Array(11);
++  for (let k = 0; k < N; k++) if (set[k]) want[group[k]!]!++;
++  st.pTimeMatched = exceed(stratifiedShares(w, group, 11, want, DRAWS.timeMatched, rng(seed + 1)), share);
++  // the same set moved elsewhere on the map
++  const setIdx = Int32Array.from({ length: N }, (_, k) => k).filter((k) => set[k]);
++  const next = rng(seed + 2);
++  const sh = new Float64Array(DRAWS.shift);
++  for (let d = 0; d < DRAWS.shift; d++) {
++    const t = Math.floor(next() * 8);
++    const di = Math.floor(next() * nx);
++    const dj = Math.floor(next() * nx);
++    let s = 0;
++    for (let q = 0; q < setIdx.length; q++) {
++      const k = setIdx[q]!;
++      s += w[transformIndex(k % nx, (k - (k % nx)) / nx, nx, t, di, dj)]!;
++    }
++    sh[d] = s;
++  }
++  sh.sort();
++  st.pShift = exceed(sh, share);
++  st.shiftLo = quantile(sh, 0.025);
++  st.shiftHi = quantile(sh, 0.975);
++  // the rank correlation with the score map moved elsewhere (ranks taken over the whole map: the same statistic for the real map and the moved ones)
++  const rg = ranks(score);
++  const rD = ranks(dU);
++  const obs = pearson(rD, Float64Array.from(U, (k) => rg[k]!));
++  st.rhoGlobal = obs;
++  const nxt = rng(seed + 3);
++  const rs = new Float64Array(DRAWS.shiftRho);
++  const tmp = new Float64Array(n);
++  for (let d = 0; d < DRAWS.shiftRho; d++) {
++    const t = Math.floor(nxt() * 8);
++    const di = Math.floor(nxt() * nx);
++    const dj = Math.floor(nxt() * nx);
++    for (let q = 0; q < n; q++) {
++      const k = U[q]!;
++      tmp[q] = rg[transformIndex(k % nx, (k - (k % nx)) / nx, nx, t, di, dj)]!;
++    }
++    rs[d] = pearson(rD, tmp);
++  }
++  rs.sort();
++  st.rhoShiftLo = quantile(rs, 0.025);
++  st.rhoShiftHi = quantile(rs, 0.975);
++  st.pRhoShift = exceed(rs, obs);
++  return st;
++}
++
++/** Ranks by a fast route for the weight search: scores are quantised to 1e-6 and the sort is a plain numeric sort of packed keys. */
++function ranksFast(v: Float64Array): Float64Array {
++  const n = v.length;
++  const keys = new Float64Array(n);
++  for (let i = 0; i < n; i++) keys[i] = Math.round(v[i]! * 1e6) * 131072 + i;
++  keys.sort();
++  const r = new Float64Array(n);
++  let i = 0;
++  while (i < n) {
++    const q = Math.floor(keys[i]! / 131072);
++    let j = i;
++    while (j + 1 < n && Math.floor(keys[j + 1]! / 131072) === q) j++;
++    const rank = (i + j) / 2 + 1;
++    for (let k = i; k <= j; k++) r[keys[k]! - Math.floor(keys[k]! / 131072) * 131072] = rank;
++    i = j + 1;
++  }
++  return r;
++}
++
++type Weights = Record<(typeof PARTS)[number], number>;
++
++function weighted(c: Case, w: Weights): Float64Array {
++  const out = new Float64Array(c.N);
++  let tot = 0;
++  for (const p of PARTS) tot += w[p];
++  for (let k = 0; k < c.N; k++) {
++    let s = 0;
++    for (const p of PARTS) s += w[p] * c.pred[p][k]!;
++    out[k] = s / tot;
++  }
++  return out;
++}
++
++/** All weight vectors on the simplex of the five parts with step 0.1 (1001 of them). */
++function simplex(): Weights[] {
++  const out: Weights[] = [];
++  for (let a = 0; a <= 10; a++) for (let b = 0; a + b <= 10; b++) for (let c = 0; a + b + c <= 10; c++) for (let d = 0; a + b + c + d <= 10; d++) {
++    out.push({ S: a / 10, C: b / 10, G: c / 10, L: d / 10, R: (10 - a - b - c - d) / 10 });
++  }
++  return out;
++}
++
++function fitWeights(cases: Case[]): { w: Weights; devRho: number } {
++  const rD = cases.map((c) => ranksFast(Float64Array.from(c.U, (k) => c.D[k]!)));
++  let best: Weights = { S: 0.2, C: 0.2, G: 0.2, L: 0.2, R: 0.2 };
++  let bestRho = -Infinity;
++  for (const w of simplex()) {
++    let sum = 0;
++    for (let i = 0; i < cases.length; i++) {
++      const c = cases[i]!;
++      const s = weighted(c, w);
++      sum += pearson(rD[i]!, ranksFast(Float64Array.from(c.U, (k) => s[k]!)));
++    }
++    const rho = sum / cases.length;
++    if (Number.isFinite(rho) && rho > bestRho) {
++      bestRho = rho;
++      best = w;
++    }
++  }
++  return { w: best, devRho: bestRho };
++}
++
++const fmt = (x: number | undefined, d = 2): string => (x === undefined || !Number.isFinite(x) ? 'n/a' : x.toFixed(d));
++const pct = (x: number | undefined, d = 0): string => (x === undefined || !Number.isFinite(x) ? 'n/a' : `${(100 * x).toFixed(d)} %`);
++const pfmt = (p: number | undefined): string => (p === undefined ? 'n/a' : p < 0.001 ? '<0.001' : p.toFixed(3));
++
++it('score the ladder', () => {
++  const sites = SITES.map(loadSite).filter((s): s is SiteData => s !== null);
++  if (!sites.length) throw new Error('no ladder-<site>.gz in data/: run 12_aggregate first');
++  const role = (id: string): string => (DEV.includes(id) ? 'dev' : HOLD.includes(id) ? 'hold-out' : '?');
++  const results: Record<string, unknown> = { plan: { dev: DEV, hold: HOLD, top: TOP, draws: DRAWS }, cases: {} as Record<string, unknown> };
++  const cases = results.cases as Record<string, Record<string, Stat>>;
++  const md: string[] = [];
++  const key = (s: PairSpec): string => `${s.grid}.${s.a}v${s.b}${s.flavB ? `.${s.flav}v${s.flavB}` : `.${s.flav}`}.${s.H}h.${s.metric}`;
++
++  // ── every case: D (and E) for the main pair and the others ──
++  const specs: PairSpec[] = [];
++  for (const flav of ['on', 'off'] as const) for (const H of [8, 4] as const) {
++    specs.push({ grid: 'g30', a: '30', b: '10', flav, H, metric: 'D' });
++    specs.push({ grid: 'g30', a: '30', b: '10', flav, H, metric: 'E' });
++    for (const [a, b] of [['30', '10'], ['30', '20'], ['20', '10']]) specs.push({ grid: 'g60', a: a!, b: b!, flav, H, metric: 'D' });
++  }
++  specs.push({ grid: 'g30', a: '30', b: '30', flav: 'on', flavB: 'on2', H: 8, metric: 'D' });
++  specs.push({ grid: 'g30', a: '30', b: '30', flav: 'on', flavB: 'on2', H: 4, metric: 'D' });
++
++  const built: Record<string, Case> = {};
++  for (const s of sites) {
++    for (const spec of specs) {
++      const c = makeCase(s, spec);
++      if (!c || c.U.length < 100) continue;
++      const k = `${s.id}|${key(spec)}`;
++      built[k] = c;
++      const mc = spec.grid === 'g30' && spec.a === '30' && (spec.b === '10' || spec.b === '30') && spec.metric === 'D' ? true : spec.H === 8;
++      const row: Record<string, Stat> = {};
++      for (const p of PREDICTORS) row[p] = evaluate(c, c.pred[p], mc && (p !== 'slope30' || spec.metric === 'D'), 1000 + k.length);
++      cases[k] = row;
++    }
++    log(`${s.id} (${role(s.id)}): ${Object.keys(cases).filter((k) => k.startsWith(`${s.id}|`)).length} cases scored`);
++  }
++
++  // ── a summary of the differences themselves ──
++  const diffs: Record<string, unknown>[] = [];
++  for (const s of sites) for (const flav of ['on', 'off'] as const) for (const H of [4, 8] as const) {
++    const c = built[`${s.id}|${key({ grid: 'g30', a: '30', b: '10', flav, H, metric: 'D' })}`];
++    if (!c) continue;
++    const d = Float64Array.from(c.U, (k) => c.D[k]!);
++    const sg = Float64Array.from(c.U, (k) => c.signed[k]!);
++    const sorted = Float64Array.from(d).sort();
++    diffs.push({ site: s.id, role: role(s.id), flav, H, n: c.U.length, meanD: r2(mean(d)), medianD: r2(median(d)), p90D: r2(quantile(sorted, 0.9)), medianSigned: r2(median(sg)), shareGE10: r3(d.filter((v) => v >= 10).length / d.length), shareGE30: r3(d.filter((v) => v >= 30).length / d.length), top20OfD: (() => { let t = 0; let b = 0; for (let q = 0; q < d.length; q++) t += d[q]!; for (let q = 0; q < Math.round(0.2 * d.length); q++) b += sorted[d.length - 1 - q]!; return r3(b / t); })() });
++  }
++  results.diffs = diffs;
++
++  // ── tuned versus as defined: fitted on the development sites, scored on the hold-out sites ──
++  const devCases = sites.filter((s) => DEV.includes(s.id)).flatMap((s) => (['on', 'off'] as const).map((flav) => built[`${s.id}|${key({ grid: 'g30', a: '30', b: '10', flav, H: 8, metric: 'D' })}`]).filter((c): c is Case => !!c));
++  const tuned: Record<string, unknown> = {};
++  if (devCases.length >= 2) {
++    const fit = fitWeights(devCases);
++    tuned.weights = fit.w;
++    tuned.devRhoInSample = r3(fit.devRho);
++    const single = PARTS.map((p) => ({ p, rho: mean(devCases.map((c) => spearman(Float64Array.from(c.U, (k) => c.pred[p][k]!), Float64Array.from(c.U, (k) => c.D[k]!))))}));
++    single.sort((a, b) => b.rho - a.rho);
++    tuned.bestSingle = single[0]!.p;
++    tuned.singleDevRho = Object.fromEntries(single.map((x) => [x.p, r3(x.rho)]));
++    const eq: Weights = { S: 0.2, C: 0.2, G: 0.2, L: 0.2, R: 0.2 };
++    const only = (p: (typeof PARTS)[number]): Weights => ({ S: 0, C: 0, G: 0, L: 0, R: 0, [p]: 1 });
++    const rows: Record<string, Record<string, Stat>> = {};
++    for (const s of sites) for (const flav of ['on', 'off'] as const) {
++      const c = built[`${s.id}|${key({ grid: 'g30', a: '30', b: '10', flav, H: 8, metric: 'D' })}`];
++      if (!c) continue;
++      rows[`${s.id}|${flav}`] = {
++        asDefined: evaluate(c, weighted(c, eq), false, 7),
++        tuned: evaluate(c, weighted(c, fit.w), false, 7),
++        bestSingle: evaluate(c, weighted(c, only(single[0]!.p)), false, 7),
++      };
++    }
++    tuned.rows = rows;
++  }
++  results.tuned = tuned;
++  writeFileSync(`${DATA}ladder-scores.json`, `${JSON.stringify(results)}\n`);
++
++  // ── tables ──
++  const runs: string[] = ['| Site | embers | burnt ha at 8 h, 30 / 20 / 10 m | wall s, 30 / 20 / 10 m | peak RSS MB, 10 m |', '|---|---|---|---|---|'];
++  for (const s of sites) for (const flav of ['on', 'off']) {
++    const r = s.meta.runs as Record<string, { series: { t: number; burntHa: number }[]; runS: number; peakRssMB: number } | undefined>;
++    const last = (k: string): string => {
++      const o = r[`${k}.${flav}`];
++      return o ? String(o.series[o.series.length - 1]!.burntHa) : 'n/a';
++    };
++    const wall = (k: string): string => (r[`${k}.${flav}`] ? Math.round(r[`${k}.${flav}`]!.runS).toString() : 'n/a');
++    runs.push(`| ${s.id} (${role(s.id)}) | ${flav} | ${last('30m')} / ${last('20m')} / ${last('10m')} | ${wall('30m')} / ${wall('20m')} / ${wall('10m')} | ${r[`10m.${flav}`]?.peakRssMB ?? 'n/a'} |`);
++  }
++  md.push('**L1. The runs (8 simulated hours, the standard scenario)**', '', ...runs, '');
++  const dt: string[] = ['| Site | embers | horizon | scored cells | mean / median / 90th percentile of D (min) | median signed (10 m minus 30 m, min) | cells with D of 10 min or more | the 20 % of cells with the largest D carry |', '|---|---|---|---|---|---|---|---|'];
++  for (const d of diffs) dt.push(`| ${String(d.site)} (${String(d.role)}) | ${String(d.flav)} | ${String(d.H)} h | ${String(d.n)} | ${String(d.meanD)} / ${String(d.medianD)} / ${String(d.p90D)} | ${String(d.medianSigned)} | ${pct(d.shareGE10 as number)} | ${pct(d.top20OfD as number)} |`);
++  md.push('**L2. How the arrival time differs, 30 m against 10 m, on the 30 m grid**', '', ...dt, '');
++  const main = (flav: string, H: number, metric: 'D' | 'E' = 'D'): string => `g30.30v10.${flav}.${H}h.${metric}`;
++  for (const [title, flav, H, metric] of [['L3', 'off', 8, 'D'], ['L4', 'on', 8, 'D']] as const) {
++    const t: string[] = ['| Site | n | ' + [...PREDICTORS].map((p) => `rho ${p}`).join(' | ') + ' | rho mean, arrival held | share carried by top-20 % (mean score) | size of that set among scored | lift | random 95 % band | p random / time-matched / shifted |', '|---|---|' + [...PREDICTORS].map(() => '---').join('|') + '|---|---|---|---|---|---|'];
++    for (const s of sites) {
++      const row = cases[`${s.id}|${main(flav, H, metric)}`];
++      if (!row) continue;
++      const m = row.mean!;
++      t.push(`| ${s.id} (${role(s.id)}) | ${m.n} | ${[...PREDICTORS].map((p) => fmt(row[p]!.rho)).join(' | ')} | ${fmt(m.rhoPartial)} | ${pct(m.share)} | ${pct(m.sizeShare)} | ${fmt(m.lift)} | ${pct(m.randomLo)} to ${pct(m.randomHi)} | ${pfmt(m.pRandom)} / ${pfmt(m.pTimeMatched)} / ${pfmt(m.pShift)} |`);
++    }
++    md.push(`**${title}. Embers ${flav}, horizon ${H} h: rank correlation of each part with D, and the top-20 % set of the score as defined**`, '', ...t, '');
++  }
++  writeFileSync(`${DATA}ladder-tables.md`, `${md.join('\n')}\n`);
++  log(`wrote ${DATA}ladder-scores.json and ladder-tables.md`);
++}, 3_600_000);
+diff --git a/studies/adaptive-simulation-quality/scripts/lib/ladderio.ts b/studies/adaptive-simulation-quality/scripts/lib/ladderio.ts
+new file mode 100644
+index 0000000..b18becd
+--- /dev/null
++++ b/studies/adaptive-simulation-quality/scripts/lib/ladderio.ts
+@@ -0,0 +1,58 @@
++/**
++ * Small helpers for the committed data of the grid-difference study: 16-bit rasters are stored as two byte planes of their
++ * differences along x (arrival times are smooth, so the differences are small and gzip packs them well), inside the same
++ * container as the rest of this folder (lib/io.ts). Written by 12_aggregate.run.ts, read by 13_score.run.ts.
++ */
++import { loadFields, saveFields, type Arr } from './io';
++
++/** u16 raster of width nx -> 2 * n bytes: the low bytes, then the high bytes, of the difference to the left neighbour (wrapping). */
++export function packU16(a: Uint16Array, nx: number): Uint8Array {
++  const n = a.length;
++  const out = new Uint8Array(2 * n);
++  for (let k = 0; k < n; k++) {
++    const d = k % nx === 0 ? a[k]! : (a[k]! - a[k - 1]!) & 0xffff;
++    out[k] = d & 0xff;
++    out[n + k] = d >> 8;
++  }
++  return out;
++}
++
++export function unpackU16(b: Uint8Array, nx: number): Uint16Array {
++  const n = b.length / 2;
++  const out = new Uint16Array(n);
++  for (let k = 0; k < n; k++) {
++    const d = b[k]! | (b[n + k]! << 8);
++    out[k] = k % nx === 0 ? d : (out[k - 1]! + d) & 0xffff;
++  }
++  return out;
++}
++
++export interface LadderSet {
++  meta: Record<string, unknown>;
++  u8: Record<string, Uint8Array>;
++  /** name -> [raster, width] */
++  u16: Record<string, [Uint16Array, number]>;
++}
++
++export function saveLadder(path: string, set: LadderSet): number {
++  const arrays: Record<string, Arr> = { ...set.u8 };
++  const widths: Record<string, number> = {};
++  for (const [name, [a, nx]] of Object.entries(set.u16)) {
++    arrays[`${name}.u16`] = packU16(a, nx);
++    widths[name] = nx;
++  }
++  return saveFields(path, { ...set.meta, u16widths: widths }, arrays);
++}
++
++export function loadLadder(path: string): { meta: Record<string, unknown>; u8: Record<string, Uint8Array>; u16: Record<string, Uint16Array> } {
++  const { meta, a } = loadFields<Record<string, unknown> & { u16widths: Record<string, number> }>(path);
++  const u8: Record<string, Uint8Array> = {};
++  const u16: Record<string, Uint16Array> = {};
++  for (const [name, arr] of Object.entries(a)) {
++    if (name.endsWith('.u16')) {
++      const base = name.slice(0, -4);
++      u16[base] = unpackU16(arr as Uint8Array, meta.u16widths[base]!);
++    } else u8[name] = arr as Uint8Array;
++  }
++  return { meta, u8, u16 };
++}
+diff --git a/studies/adaptive-simulation-quality/scripts/lib/stats.ts b/studies/adaptive-simulation-quality/scripts/lib/stats.ts
+new file mode 100644
+index 0000000..7006019
+--- /dev/null
++++ b/studies/adaptive-simulation-quality/scripts/lib/stats.ts
+@@ -0,0 +1,156 @@
++/** Small statistics for the grid-difference study (13_score.run.ts). Plain functions of arrays; nothing here reads the simulation. */
++
++/** Average ranks (ties share the mean rank), 1-based. */
++export function ranks(v: ArrayLike<number>): Float64Array {
++  const n = v.length;
++  const idx = Int32Array.from({ length: n }, (_, i) => i);
++  idx.sort((a, b) => v[a]! - v[b]! || a - b);
++  const r = new Float64Array(n);
++  let i = 0;
++  while (i < n) {
++    let j = i;
++    while (j + 1 < n && v[idx[j + 1]!]! === v[idx[i]!]!) j++;
++    const rank = (i + j) / 2 + 1;
++    for (let k = i; k <= j; k++) r[idx[k]!] = rank;
++    i = j + 1;
++  }
++  return r;
++}
++
++export function pearson(a: ArrayLike<number>, b: ArrayLike<number>): number {
++  const n = a.length;
++  let ma = 0;
++  let mb = 0;
++  for (let i = 0; i < n; i++) {
++    ma += a[i]!;
++    mb += b[i]!;
++  }
++  ma /= n;
++  mb /= n;
++  let sab = 0;
++  let saa = 0;
++  let sbb = 0;
++  for (let i = 0; i < n; i++) {
++    const x = a[i]! - ma;
++    const y = b[i]! - mb;
++    sab += x * y;
++    saa += x * x;
++    sbb += y * y;
++  }
++  return saa > 0 && sbb > 0 ? sab / Math.sqrt(saa * sbb) : NaN;
++}
++
++/** Spearman rank correlation (Pearson on average ranks; NaN when one side is constant). */
++export const spearman = (a: ArrayLike<number>, b: ArrayLike<number>): number => pearson(ranks(a), ranks(b));
++
++/** Partial rank correlation of x and y given z, from the three Spearman coefficients. */
++export function partialSpearman(x: ArrayLike<number>, y: ArrayLike<number>, z: ArrayLike<number>): number {
++  const rx = ranks(x);
++  const ry = ranks(y);
++  const rz = ranks(z);
++  const xy = pearson(rx, ry);
++  const xz = pearson(rx, rz);
++  const yz = pearson(ry, rz);
++  return (xy - xz * yz) / Math.sqrt((1 - xz * xz) * (1 - yz * yz));
++}
++
++/** Seeded generator (mulberry32): every draw of the study is reproducible. */
++export function rng(seed: number): () => number {
++  let a = seed >>> 0;
++  return () => {
++    a = (a + 0x6d2b79f5) >>> 0;
++    let t = a;
++    t = Math.imul(t ^ (t >>> 15), t | 1);
++    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
++    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
++  };
++}
++
++export function quantile(sorted: ArrayLike<number>, p: number): number {
++  const n = sorted.length;
++  if (n === 0) return NaN;
++  const x = p * (n - 1);
++  const i = Math.floor(x);
++  const f = x - i;
++  return i + 1 < n ? sorted[i]! * (1 - f) + sorted[i + 1]! * f : sorted[i]!;
++}
++
++export const mean = (a: ArrayLike<number>): number => {
++  let s = 0;
++  for (let i = 0; i < a.length; i++) s += a[i]!;
++  return a.length ? s / a.length : NaN;
++};
++
++/** Median of a copy. */
++export const median = (a: ArrayLike<number>): number => quantile(Float64Array.from(a).sort(), 0.5);
++
++/**
++ * The share of a total that a set carries when the set is drawn at random: draws `m` of `n` items (without replacement) `draws` times
++ * and returns the sorted shares. `w[i]` is the item's part of the total (sums to 1 over all items).
++ */
++export function randomShares(w: Float64Array, m: number, draws: number, next: () => number): Float64Array {
++  const n = w.length;
++  const out = new Float64Array(draws);
++  const perm = Int32Array.from({ length: n }, (_, i) => i);
++  for (let d = 0; d < draws; d++) {
++    let s = 0;
++    for (let q = 0; q < m; q++) {
++      const j = q + Math.floor(next() * (n - q));
++      const t = perm[q]!;
++      perm[q] = perm[j]!;
++      perm[j] = t;
++      s += w[perm[q]!]!;
++    }
++    out[d] = s;
++  }
++  return out.sort();
++}
++
++/** Same, but the random set keeps the number of items the real set has in each group (`group[i]` in 0..groups-1; `want[g]` items of group g). */
++export function stratifiedShares(w: Float64Array, group: Int32Array, groups: number, want: Int32Array, draws: number, next: () => number): Float64Array {
++  const members: number[][] = Array.from({ length: groups }, () => []);
++  for (let i = 0; i < w.length; i++) members[group[i]!]!.push(i);
++  const out = new Float64Array(draws);
++  for (let d = 0; d < draws; d++) {
++    let s = 0;
++    for (let g = 0; g < groups; g++) {
++      const mem = members[g]!;
++      const m = Math.min(want[g]!, mem.length);
++      for (let q = 0; q < m; q++) {
++        const j = q + Math.floor(next() * (mem.length - q));
++        const t = mem[q]!;
++        mem[q] = mem[j]!;
++        mem[j] = t;
++        s += w[mem[q]!]!;
++      }
++    }
++    out[d] = s;
++  }
++  return out.sort();
++}
++
++/** Position (0..1) of `x` in a sorted sample: the share of draws strictly below it plus half the ties. */
++export function percentileOf(sorted: Float64Array, x: number): number {
++  let lo = 0;
++  let hi = sorted.length;
++  while (lo < hi) {
++    const mid = (lo + hi) >> 1;
++    if (sorted[mid]! < x) lo = mid + 1;
++    else hi = mid;
++  }
++  let up = lo;
++  while (up < sorted.length && sorted[up]! === x) up++;
++  return (lo + up) / 2 / sorted.length;
++}
++
++/** Index of cell (i, j) of an n x n grid after one of the 8 symmetries of the square (t = 0..7) and a wrap-around shift (di, dj). */
++export function transformIndex(i: number, j: number, n: number, t: number, di: number, dj: number): number {
++  let a = i;
++  let b = j;
++  if (t & 1) a = n - 1 - a;
++  if (t & 2) b = n - 1 - b;
++  if (t & 4) [a, b] = [b, a];
++  a = (a + di) % n;
++  b = (b + dj) % n;
++  return b * n + a;
++}
+
+From f944de368c5fbe32ebd56fe648c070615ca369ef Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 07:26:29 +0000
+Subject: [PATCH 2/5] Grid-difference scorer: deciles of D by score, a data
+ folder override, a faster map transform
+
+Tested on two synthetic containers (a difference that follows the score: rank correlation 0.91;
+one that does not: 0.05, lift 0.94), nothing committed from them.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ .../scripts/12_aggregate.run.ts               |  2 +-
+ .../scripts/13_score.run.ts                   | 31 ++++++++++++++++++-
+ .../scripts/lib/stats.ts                      | 16 +++++-----
+ 3 files changed, 39 insertions(+), 10 deletions(-)
+
+diff --git a/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts b/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts
+index 1971b16..b91d139 100644
+--- a/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts
++++ b/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts
+@@ -20,7 +20,7 @@ import { saveLadder, type LadderSet } from './lib/ladderio';
+ 
+ const SITES = (process.env.AQ_SITES ?? 'katoomba,thredbo,warrumbungles,grose,kanangra,tomah').split(',');
+ const WORK = process.env.AQ_WORK ?? new URL('../work/ladder/', import.meta.url).pathname;
+-const DATA = new URL('../data/', import.meta.url).pathname;
++const DATA = process.env.AQ_DATA ?? new URL('../data/', import.meta.url).pathname;
+ const HORIZONS_S = [4 * 3600, 8 * 3600] as const;
+ const log = (s: string): void => {
+   process.stderr.write(`[aggregate] ${s}\n`);
+diff --git a/studies/adaptive-simulation-quality/scripts/13_score.run.ts b/studies/adaptive-simulation-quality/scripts/13_score.run.ts
+index 072e0e3..88acaa0 100644
+--- a/studies/adaptive-simulation-quality/scripts/13_score.run.ts
++++ b/studies/adaptive-simulation-quality/scripts/13_score.run.ts
+@@ -32,7 +32,7 @@ import { mean, median, partialSpearman, pearson, quantile, randomShares, ranks,
+ export const DEV = ['katoomba', 'thredbo', 'warrumbungles'];
+ export const HOLD = ['grose', 'kanangra', 'tomah'];
+ const SITES = (process.env.AQ_SITES ?? [...DEV, ...HOLD].join(',')).split(',');
+-const DATA = new URL('../data/', import.meta.url).pathname;
++const DATA = process.env.AQ_DATA ?? new URL('../data/', import.meta.url).pathname;
+ const PARTS = ['S', 'C', 'G', 'L', 'R'] as const;
+ const PREDICTORS = ['mean', ...PARTS, 'slope30'] as const;
+ type Pred = (typeof PREDICTORS)[number];
+@@ -292,6 +292,32 @@ function evaluate(c: Case, score: Float64Array, mc: boolean, seed: number): Stat
+   return st;
+ }
+ 
++/** Mean D, mean arrival time and mean score in ten equal-count groups of the scored cells, ordered by the score (ties by index). */
++function deciles(c: Case, score: Float64Array): { meanD: number[]; meanArrival: number[]; meanScore: number[]; n: number } {
++  const n = c.U.length;
++  const order = Int32Array.from({ length: n }, (_, i) => i).sort((a, b) => score[c.U[a]!]! - score[c.U[b]!]! || a - b);
++  const meanD: number[] = [];
++  const meanArrival: number[] = [];
++  const meanScore: number[] = [];
++  for (let g = 0; g < 10; g++) {
++    const lo = Math.floor((g * n) / 10);
++    const hi = Math.floor(((g + 1) * n) / 10);
++    let d = 0;
++    let a = 0;
++    let sc = 0;
++    for (let q = lo; q < hi; q++) {
++      const k = c.U[order[q]!]!;
++      d += c.D[k]!;
++      a += c.ax[k]!;
++      sc += score[k]!;
++    }
++    meanD.push(r2(d / (hi - lo)));
++    meanArrival.push(r2(a / (hi - lo)));
++    meanScore.push(r3(sc / (hi - lo)));
++  }
++  return { meanD, meanArrival, meanScore, n };
++}
++
+ /** Ranks by a fast route for the weight search: scores are quantised to 1e-6 and the sort is a plain numeric sort of packed keys. */
+ function ranksFast(v: Float64Array): Float64Array {
+   const n = v.length;
+@@ -403,6 +429,9 @@ it('score the ladder', () => {
+     diffs.push({ site: s.id, role: role(s.id), flav, H, n: c.U.length, meanD: r2(mean(d)), medianD: r2(median(d)), p90D: r2(quantile(sorted, 0.9)), medianSigned: r2(median(sg)), shareGE10: r3(d.filter((v) => v >= 10).length / d.length), shareGE30: r3(d.filter((v) => v >= 30).length / d.length), top20OfD: (() => { let t = 0; let b = 0; for (let q = 0; q < d.length; q++) t += d[q]!; for (let q = 0; q < Math.round(0.2 * d.length); q++) b += sorted[d.length - 1 - q]!; return r3(b / t); })() });
+   }
+   results.diffs = diffs;
++  const dec: Record<string, unknown> = {};
++  for (const [k, c] of Object.entries(built)) if (c.spec.metric === 'D' && c.spec.H === 8 && c.spec.grid === 'g30') dec[k] = { mean: deciles(c, c.pred.mean), slope30: deciles(c, c.pred.slope30) };
++  results.deciles = dec;
+ 
+   // ── tuned versus as defined: fitted on the development sites, scored on the hold-out sites ──
+   const devCases = sites.filter((s) => DEV.includes(s.id)).flatMap((s) => (['on', 'off'] as const).map((flav) => built[`${s.id}|${key({ grid: 'g30', a: '30', b: '10', flav, H: 8, metric: 'D' })}`]).filter((c): c is Case => !!c));
+diff --git a/studies/adaptive-simulation-quality/scripts/lib/stats.ts b/studies/adaptive-simulation-quality/scripts/lib/stats.ts
+index 7006019..029b431 100644
+--- a/studies/adaptive-simulation-quality/scripts/lib/stats.ts
++++ b/studies/adaptive-simulation-quality/scripts/lib/stats.ts
+@@ -145,12 +145,12 @@ export function percentileOf(sorted: Float64Array, x: number): number {
+ 
+ /** Index of cell (i, j) of an n x n grid after one of the 8 symmetries of the square (t = 0..7) and a wrap-around shift (di, dj). */
+ export function transformIndex(i: number, j: number, n: number, t: number, di: number, dj: number): number {
+-  let a = i;
+-  let b = j;
+-  if (t & 1) a = n - 1 - a;
+-  if (t & 2) b = n - 1 - b;
+-  if (t & 4) [a, b] = [b, a];
+-  a = (a + di) % n;
+-  b = (b + dj) % n;
+-  return b * n + a;
++  let a = t & 1 ? n - 1 - i : i;
++  let b = t & 2 ? n - 1 - j : j;
++  if (t & 4) {
++    const c = a;
++    a = b;
++    b = c;
++  }
++  return ((b + dj) % n) * n + ((a + di) % n);
+ }
+
+From cc8380179c4091fbdd11edd76c67a8b8bdfd6ead Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 08:30:20 +0000
+Subject: [PATCH 3/5] Grid-difference study: lift per scored cell, a moved-set
+ test on it, an arrival-time baseline, smaller containers, budgeted lock turns
+
+The scorer gains the arrival-time baseline, random sets of as many scored cells and a
+moved-set test on the lift (added after looking at Katoomba, a development site; no hold-out
+site scored yet, said in the plan). The containers keep arrival in 10 s units, the complexity
+groups at 10 bits and the 60 m blocks at 8 h only, to stay small.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ .../scripts/11_ladder.batch.mjs               |  44 ++++--
+ .../scripts/12_aggregate.run.ts               |  32 ++--
+ .../scripts/13_score.run.ts                   | 147 ++++++++++++++----
+ 3 files changed, 168 insertions(+), 55 deletions(-)
+
+diff --git a/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs b/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs
+index b16543a..ce41ec8 100644
+--- a/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs
++++ b/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs
+@@ -1,5 +1,5 @@
+-// Runs the rows of the grid-difference study one after the other, each in its own Node process and each under the machine's shared
+-// heavy-job lock (so another job can take its turn between two rows; a 10 m row of 8 simulated hours takes minutes and about 1.2 GB).
++// Runs the rows of the grid-difference study one after the other, each in its own Node process, in turns under the machine's shared
++// heavy-job lock (a 10 m row of 8 simulated hours takes minutes and about 1.2 GB; see "Lock turns" below).
+ //
+ //   setsid nohup node studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs <outdir> <log> [sites] [cells] [flavours] &
+ //     sites     comma list (default: the six sites of the study, in run order)
+@@ -35,18 +35,36 @@ for (const site of SITES) {
+   }
+ }
+ log(`batch of ${rows.length} rows`);
+-for (const spec of rows) {
+-  const raster = resolve(outDir, `${spec.id}.fields.gz`);
+-  const out = resolve(outDir, `${spec.id}.json`);
+-  if (existsSync(raster) && existsSync(out)) {
+-    log(`skip ${spec.id} (done)`);
+-    continue;
++// Lock turns: consecutive rows are run together in one turn while their estimated time (minutes: 30 m about 1, 20 m 2, 10 m 7 on an idle
++// core) stays within a budget, so a long queue for the lock costs fewer waits and other jobs still get it every quarter of an hour or so.
++const todo = rows.filter((spec) => !(existsSync(resolve(outDir, `${spec.id}.fields.gz`)) && existsSync(resolve(outDir, `${spec.id}.json`))));
++for (const spec of rows) if (!todo.includes(spec)) log(`skip ${spec.id} (done)`);
++const EST_MIN = { 30: 1, 20: 2, 10: 7 };
++const BUDGET_MIN = 16;
++const turns = [];
++let spent = 0;
++for (const spec of todo) {
++  const last = turns[turns.length - 1];
++  if (last && spent + EST_MIN[spec.cell] <= BUDGET_MIN) {
++    last.push(spec);
++    spent += EST_MIN[spec.cell];
++  } else {
++    turns.push([spec]);
++    spent = EST_MIN[spec.cell];
+   }
+-  const specFile = resolve(outDir, `${spec.id}.spec.json`);
+-  writeFileSync(specFile, JSON.stringify({ ...spec, rasterPath: raster }));
+-  log(`start ${spec.id} (waits for the lock)`);
++}
++const INNER = 'L="$0"; while [ "$#" -gt 1 ]; do node --expose-gc --max-old-space-size=4096 "$L" "$1" "$2"; shift 2; done';
++for (const turn of turns) {
++  const args = [];
++  for (const spec of turn) {
++    const specFile = resolve(outDir, `${spec.id}.spec.json`);
++    writeFileSync(specFile, JSON.stringify({ ...spec, rasterPath: resolve(outDir, `${spec.id}.fields.gz`) }));
++    args.push(specFile, resolve(outDir, `${spec.id}.json`));
++  }
++  const names = turn.map((s) => s.id).join(' ');
++  log(`start turn: ${names} (waits for the lock)`);
+   const t = Date.now();
+-  const r = spawnSync('flock', ['/tmp/firesim-heavy.lock', 'node', '--expose-gc', '--max-old-space-size=4096', resolve(here, '10_ladder.launch.mjs'), specFile, out], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 26 });
+-  log(`end ${spec.id} after ${Math.round((Date.now() - t) / 1000)} s incl. lock wait, status ${r.status}: ${(r.stdout || '').trim().split('\n').pop()} ${(r.stderr || '').trim().split('\n').slice(-3).join(' | ')}`);
++  const r = spawnSync('flock', ['/tmp/firesim-heavy.lock', 'bash', '-c', INNER, resolve(here, '10_ladder.launch.mjs'), ...args], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 26 });
++  log(`end turn: ${names} after ${Math.round((Date.now() - t) / 1000)} s incl. lock wait, status ${r.status}: ${(r.stdout || '').trim().split('\n').join(' | ')} ${(r.stderr || '').trim().split('\n').slice(-3).join(' | ')}`);
+ }
+ appendFileSync(logPath, 'DONE\n');
+diff --git a/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts b/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts
+index b91d139..98be30e 100644
+--- a/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts
++++ b/studies/adaptive-simulation-quality/scripts/12_aggregate.run.ts
+@@ -2,11 +2,12 @@
+  * Step 4 (after 10_ladder / 11_ladder.batch): from the full-resolution rows in `work/` build ONE small container per site,
+  * `data/ladder-<site>.gz`, that holds everything 13_score.run.ts needs and nothing else:
+  *   - the five complexity groups of the quality map (lib/analysis.ts, `complexity()`), at the 30 m grid, as 16-bit rasters
+- *     (resolution 1/65535; the score itself is the mean of the five and is made by the scorer), the 30 m slope, the flammable masks;
++ *     holding 10 bits (resolution 1/1023; the score itself is the mean of the five and is made by the scorer), the 30 m slope (0.4 degrees),
++ *     the flammable masks;
+  *   - per embers setting (`on` = embers on, seed 1; `off` = embers off) and per horizon H (4 h, 8 h): the arrival time of every row
+- *     capped at H (a cell not reached by H counts as H) on two common grids: the 30 m grid (the 30 m row as it is; the 10 m row as
++ *     capped at H (a cell not reached by H counts as H; stored in units of 10 s) on two common grids: the 30 m grid (the 30 m row as it is; the 10 m row as
+  *     the mean of the 3 x 3 cells inside each 30 m cell) and 60 m blocks (every row as the mean of the cells inside the block), with
+- *     the number of cells reached by H;
++ *     the number of cells reached by H (the 60 m blocks only at 8 h);
+  *   - the run records (burnt area every 30 min, wall time, memory, spot fires).
+  * 20 m cells do not tile the 30 m grid (1.5 cells), so the 20 m row is compared on the 60 m blocks only.
+  *
+@@ -22,6 +23,7 @@ const SITES = (process.env.AQ_SITES ?? 'katoomba,thredbo,warrumbungles,grose,kan
+ const WORK = process.env.AQ_WORK ?? new URL('../work/ladder/', import.meta.url).pathname;
+ const DATA = process.env.AQ_DATA ?? new URL('../data/', import.meta.url).pathname;
+ const HORIZONS_S = [4 * 3600, 8 * 3600] as const;
++const T8 = 8 * 3600;
+ const log = (s: string): void => {
+   process.stderr.write(`[aggregate] ${s}\n`);
+ };
+@@ -42,7 +44,7 @@ function loadRow(id: string): Row | null {
+   return { arrival: a.arrival as Float32Array, flammable: a.flammable as Uint8Array, meta, a, out: JSON.parse(readFileSync(json, 'utf8')) as Record<string, unknown> };
+ }
+ 
+-/** Blocks of f x f cells: the mean of min(arrival, H) (s, rounded) and the number of cells with arrival < H. */
++/** Blocks of f x f cells: the mean of min(arrival, H) (in units of 10 s, rounded) and the number of cells with arrival < H. */
+ function blocks(arrival: Float32Array, nx: number, f: number, H: number): { mean: Uint16Array; count: Uint8Array; nb: number } {
+   const nb = nx / f;
+   if (!Number.isInteger(nb)) throw new Error(`${nx} cells do not divide into blocks of ${f}`);
+@@ -61,14 +63,14 @@ function blocks(arrival: Float32Array, nx: number, f: number, H: number): { mean
+           } else s += H;
+         }
+       }
+-      mean[bj * nb + bi] = Math.round(s / (f * f));
++      mean[bj * nb + bi] = Math.round(s / (f * f) / 10);
+       count[bj * nb + bi] = c;
+     }
+   }
+   return { mean, count, nb };
+ }
+ 
+-const q16 = (a: Float32Array): Uint16Array => Uint16Array.from(a, (v) => Math.round(Math.min(1, Math.max(0, v)) * 65535));
++const q10 = (a: Float32Array): Uint16Array => Uint16Array.from(a, (v) => Math.round(Math.min(1, Math.max(0, v)) * 1023));
+ 
+ it('aggregate the ladder rows into one container per site', () => {
+   mkdirSync(DATA, { recursive: true });
+@@ -81,14 +83,14 @@ it('aggregate the ladder rows into one container per site', () => {
+     const g = base.meta.grid;
+     const n = g.nx * g.ny;
+     const comp = complexity({ ...(base.a as unknown as Fields) });
+-    const set: LadderSet = { meta: { site, grid30: g, windowS: 8 * 3600, horizonsS: HORIZONS_S, ignition: base.meta.ignition, runs: {} as Record<string, unknown>, complexityNote: 'S, C, G, L, R of lib/analysis.ts complexity(), 16-bit (1/65535); score = their mean' }, u8: {}, u16: {} };
++    const set: LadderSet = { meta: { site, grid30: g, windowS: 8 * 3600, horizonsS: HORIZONS_S, ignition: base.meta.ignition, runs: {} as Record<string, unknown>, complexityNote: 'S, C, G, L, R of lib/analysis.ts complexity(), 10 bits (1/1023); score = their mean', arrivalUnitS: 10, slopeUnit: 'degrees x 2.5' }, u8: {}, u16: {} };
+     const runs = set.meta.runs as Record<string, unknown>;
+-    set.u16.S = [q16(comp.S), g.nx];
+-    set.u16.C = [q16(comp.C), g.nx];
+-    set.u16.G = [q16(comp.G), g.nx];
+-    set.u16.L = [q16(comp.L), g.nx];
+-    set.u16.R = [q16(comp.R), g.nx];
+-    set.u16.slope30 = [Uint16Array.from(base.a.slope30 as Float32Array, (v) => Math.round(Math.min(300, v) * 200)), g.nx];
++    set.u16.S = [q10(comp.S), g.nx];
++    set.u16.C = [q10(comp.C), g.nx];
++    set.u16.G = [q10(comp.G), g.nx];
++    set.u16.L = [q10(comp.L), g.nx];
++    set.u16.R = [q10(comp.R), g.nx];
++    set.u8.slope30 = Uint8Array.from(base.a.slope30 as Float32Array, (v) => Math.round(Math.min(90, v) * 2.5));
+     set.u8.flam30 = base.flammable;
+     let flam10: Uint8Array | null = null;
+     for (const flav of ['on', 'off', 'on2']) {
+@@ -101,6 +103,7 @@ it('aggregate the ladder rows into one container per site', () => {
+         set.u16[`g30.30.${flav}.${H / 3600}h`] = [b30.mean, g.nx];
+         set.u8[`n30.30.${flav}.${H / 3600}h`] = b30.count;
+         if (flav === 'on2') continue;
++        if (H !== T8) continue;
+         const b60 = blocks(r30.arrival, g.nx, 2, H);
+         set.u16[`g60.30.${flav}.${H / 3600}h`] = [b60.mean, b60.nb];
+         set.u8[`n60.30.${flav}.${H / 3600}h`] = b60.count;
+@@ -110,7 +113,7 @@ it('aggregate the ladder rows into one container per site', () => {
+       const r10 = loadRow(`${site}.10m.${flav}`);
+       if (r20) {
+         runs[`20m.${flav}`] = slim(r20.out);
+-        for (const H of HORIZONS_S) {
++        for (const H of [T8]) {
+           const b60 = blocks(r20.arrival, r20.meta.grid.nx, 3, H);
+           set.u16[`g60.20.${flav}.${H / 3600}h`] = [b60.mean, b60.nb];
+           set.u8[`n60.20.${flav}.${H / 3600}h`] = b60.count;
+@@ -133,6 +136,7 @@ it('aggregate the ladder rows into one container per site', () => {
+           const b30 = blocks(r10.arrival, nx10, 3, H);
+           set.u16[`g30.10.${flav}.${H / 3600}h`] = [b30.mean, g.nx];
+           set.u8[`n30.10.${flav}.${H / 3600}h`] = b30.count;
++          if (H !== T8) continue;
+           const b60 = blocks(r10.arrival, nx10, 6, H);
+           set.u16[`g60.10.${flav}.${H / 3600}h`] = [b60.mean, b60.nb];
+           set.u8[`n60.10.${flav}.${H / 3600}h`] = b60.count;
+diff --git a/studies/adaptive-simulation-quality/scripts/13_score.run.ts b/studies/adaptive-simulation-quality/scripts/13_score.run.ts
+index 88acaa0..c16d5c7 100644
+--- a/studies/adaptive-simulation-quality/scripts/13_score.run.ts
++++ b/studies/adaptive-simulation-quality/scripts/13_score.run.ts
+@@ -34,7 +34,7 @@ export const HOLD = ['grose', 'kanangra', 'tomah'];
+ const SITES = (process.env.AQ_SITES ?? [...DEV, ...HOLD].join(',')).split(',');
+ const DATA = process.env.AQ_DATA ?? new URL('../data/', import.meta.url).pathname;
+ const PARTS = ['S', 'C', 'G', 'L', 'R'] as const;
+-const PREDICTORS = ['mean', ...PARTS, 'slope30'] as const;
++const PREDICTORS = ['mean', ...PARTS, 'slope30', 'arrival'] as const;
+ type Pred = (typeof PREDICTORS)[number];
+ const DRAWS = { random: 2000, timeMatched: 1000, shift: 1000, shiftRho: 400 };
+ const TOP = 0.2;
+@@ -61,10 +61,10 @@ function loadSite(id: string): SiteData | null {
+   const nx = (meta.grid30 as { nx: number }).nx;
+   const n = nx * nx;
+   const parts = {} as SiteData['parts'];
+-  for (const p of PARTS) parts[p] = Float64Array.from(u16[p]!, (v) => v / 65535);
++  for (const p of PARTS) parts[p] = Float64Array.from(u16[p]!, (v) => v / 1023);
+   parts.mean = new Float64Array(n);
+   for (let k = 0; k < n; k++) parts.mean[k] = (parts.S[k]! + parts.C[k]! + parts.G[k]! + parts.L[k]! + parts.R[k]!) / 5;
+-  parts.slope30 = Float64Array.from(u16.slope30!, (v) => v / 200);
++  parts.slope30 = Float64Array.from(u8.slope30!, (v) => v / 2.5);
+   return { id, nx, meta, parts, flam30: u8.flam30!, u8, u16 };
+ }
+ 
+@@ -118,9 +118,9 @@ function makeCase(s: SiteData, spec: PairSpec): Case | null {
+   if (!x16 || !y16 || !nxC || !nyC) return null;
+   const nx = spec.grid === 'g30' ? s.nx : s.nx / 2;
+   const N = nx * nx;
+-  const ax = Float64Array.from(x16, (v) => v / 60);
++  const ax = Float64Array.from(x16, (v) => v / 6);
+   const signed = new Float64Array(N);
+-  for (let k = 0; k < N; k++) signed[k] = (y16[k]! - x16[k]!) / 60;
++  for (let k = 0; k < N; k++) signed[k] = (y16[k]! - x16[k]!) / 6;
+   const flam = new Uint8Array(N);
+   if (spec.grid === 'g30') flam.set(s.flam30);
+   else for (let bj = 0; bj < nx; bj++) for (let bi = 0; bi < nx; bi++) flam[bj * nx + bi] = s.flam30[2 * bj * s.nx + 2 * bi]! | s.flam30[2 * bj * s.nx + 2 * bi + 1]! | s.flam30[(2 * bj + 1) * s.nx + 2 * bi]! | s.flam30[(2 * bj + 1) * s.nx + 2 * bi + 1]!;
+@@ -147,7 +147,10 @@ function makeCase(s: SiteData, spec: PairSpec): Case | null {
+     }
+   }
+   const pred = {} as Case['pred'];
+-  for (const p of PREDICTORS) pred[p] = spec.grid === 'g30' ? s.parts[p] : blockMean(s.parts[p], s.nx);
++  for (const p of PREDICTORS) if (p !== 'arrival') pred[p] = spec.grid === 'g30' ? s.parts[p] : blockMean(s.parts[p], s.nx);
++  // the baseline that knows nothing of the terrain: the arrival time of the 30 m run (0 on cells that are not scored, so they never enter its top set)
++  pred.arrival = new Float64Array(N);
++  for (const k of U) pred.arrival[k] = ax[k]!;
+   return { site: s.id, spec, nx, N, U: Int32Array.from(U), D, signed, ax, pred };
+ }
+ 
+@@ -167,10 +170,18 @@ export interface Stat {
+   randomLo: number;
+   randomHi: number;
+   pRandom?: number;
++  /** random sets with the same number of SCORED cells as the set holds (the cells the front reached), drawn from the scored cells only */
++  pScored?: number;
++  scoredLo?: number;
++  scoredHi?: number;
+   pTimeMatched?: number;
+   pShift?: number;
+   shiftLo?: number;
+   shiftHi?: number;
++  /** the same test on the lift per scored cell (the moved set's share over its own share of scored cells): coverage no longer counts */
++  pShiftLift?: number;
++  shiftLiftLo?: number;
++  shiftLiftHi?: number;
+   rhoGlobal?: number;
+   rhoShiftLo?: number;
+   rhoShiftHi?: number;
+@@ -190,7 +201,7 @@ const exceed = (sorted: Float64Array, x: number): number => {
+   return (1 + sorted.length - lo) / (1 + sorted.length);
+ };
+ 
+-function evaluate(c: Case, score: Float64Array, mc: boolean, seed: number): Stat {
++function evaluate(c: Case, score: Float64Array, mc: boolean, seed: number, p: Pred | 'weighted' = 'mean'): Stat {
+   const { U, D, N, nx } = c;
+   const n = U.length;
+   const sU = Float64Array.from(U, (k) => score[k]!);
+@@ -226,7 +237,7 @@ function evaluate(c: Case, score: Float64Array, mc: boolean, seed: number): Stat
+   const st: Stat = {
+     n,
+     rho: spearman(sU, dU),
+-    rhoPartial: partialSpearman(sU, dU, aU),
++    rhoPartial: p === 'arrival' ? NaN : partialSpearman(sU, dU, aU),
+     setCells,
+     setInU: setIn,
+     sizeShare,
+@@ -241,6 +252,11 @@ function evaluate(c: Case, score: Float64Array, mc: boolean, seed: number): Stat
+   };
+   if (!mc) return st;
+   st.pRandom = exceed(rand, share);
++  const wU = Float64Array.from(dU, (v) => (total > 0 ? v / total : 0));
++  const randU = randomShares(wU, setIn, DRAWS.random, rng(seed + 4));
++  st.pScored = exceed(randU, share);
++  st.scoredLo = quantile(randU, 0.025);
++  st.scoredHi = quantile(randU, 0.975);
+   // random sets with the same number of cells in each tenth of the arrival-time range of the scored cells (group 10: not scored)
+   const rk = ranks(aU);
+   const group = new Int32Array(N).fill(10);
+@@ -252,21 +268,32 @@ function evaluate(c: Case, score: Float64Array, mc: boolean, seed: number): Stat
+   const setIdx = Int32Array.from({ length: N }, (_, k) => k).filter((k) => set[k]);
+   const next = rng(seed + 2);
+   const sh = new Float64Array(DRAWS.shift);
++  const shLift = new Float64Array(DRAWS.shift);
++  const inU = new Uint8Array(N);
++  for (let q = 0; q < n; q++) inU[U[q]!] = 1;
+   for (let d = 0; d < DRAWS.shift; d++) {
+     const t = Math.floor(next() * 8);
+     const di = Math.floor(next() * nx);
+     const dj = Math.floor(next() * nx);
+-    let s = 0;
++    let sum = 0;
++    let cnt = 0;
+     for (let q = 0; q < setIdx.length; q++) {
+       const k = setIdx[q]!;
+-      s += w[transformIndex(k % nx, (k - (k % nx)) / nx, nx, t, di, dj)]!;
++      const kk = transformIndex(k % nx, (k - (k % nx)) / nx, nx, t, di, dj);
++      sum += w[kk]!;
++      cnt += inU[kk]!;
+     }
+-    sh[d] = s;
++    sh[d] = sum;
++    shLift[d] = cnt > 0 ? sum / (cnt / n) : 0;
+   }
+   sh.sort();
++  shLift.sort();
+   st.pShift = exceed(sh, share);
+   st.shiftLo = quantile(sh, 0.025);
+   st.shiftHi = quantile(sh, 0.975);
++  st.pShiftLift = exceed(shLift, st.lift);
++  st.shiftLiftLo = quantile(shLift, 0.025);
++  st.shiftLiftHi = quantile(shLift, 0.975);
+   // the rank correlation with the score map moved elsewhere (ranks taken over the whole map: the same statistic for the real map and the moved ones)
+   const rg = ranks(score);
+   const rD = ranks(dU);
+@@ -412,7 +439,7 @@ it('score the ladder', () => {
+       built[k] = c;
+       const mc = spec.grid === 'g30' && spec.a === '30' && (spec.b === '10' || spec.b === '30') && spec.metric === 'D' ? true : spec.H === 8;
+       const row: Record<string, Stat> = {};
+-      for (const p of PREDICTORS) row[p] = evaluate(c, c.pred[p], mc && (p !== 'slope30' || spec.metric === 'D'), 1000 + k.length);
++      for (const p of PREDICTORS) row[p] = evaluate(c, c.pred[p], mc && ((p !== 'slope30' && p !== 'arrival') || spec.metric === 'D'), 1000 + k.length, p);
+       cases[k] = row;
+     }
+     log(`${s.id} (${role(s.id)}): ${Object.keys(cases).filter((k) => k.startsWith(`${s.id}|`)).length} cases scored`);
+@@ -462,30 +489,94 @@ it('score the ladder', () => {
+   writeFileSync(`${DATA}ladder-scores.json`, `${JSON.stringify(results)}\n`);
+ 
+   // ── tables ──
+-  const runs: string[] = ['| Site | embers | burnt ha at 8 h, 30 / 20 / 10 m | wall s, 30 / 20 / 10 m | peak RSS MB, 10 m |', '|---|---|---|---|---|'];
+-  for (const s of sites) for (const flav of ['on', 'off']) {
+-    const r = s.meta.runs as Record<string, { series: { t: number; burntHa: number }[]; runS: number; peakRssMB: number } | undefined>;
+-    const last = (k: string): string => {
++  const siteRows = (): SiteData[] => sites;
++  const label = (id: string): string => `${id} (${role(id)})`;
++  const get = (id: string, spec: PairSpec): Record<string, Stat> | undefined => cases[`${id}|${key(spec)}`];
++  const main = (flav: 'on' | 'off', H: 4 | 8 = 8, metric: 'D' | 'E' = 'D'): PairSpec => ({ grid: 'g30', a: '30', b: '10', flav, H, metric });
++
++  const runs: string[] = ['| Site | embers | burnt ha at 8 h, 30 / 20 / 10 m | spot fires at 8 h, 30 / 20 / 10 m | wall s, 30 / 20 / 10 m (a shared machine) | peak RSS MB, 10 m |', '|---|---|---|---|---|---|'];
++  for (const s of siteRows()) for (const flav of ['on', 'off']) {
++    const r = s.meta.runs as Record<string, { series: { t: number; burntHa: number; spots: number }[]; runS: number; peakRssMB: number } | undefined>;
++    const last = (k: string, f: 'burntHa' | 'spots'): string => {
+       const o = r[`${k}.${flav}`];
+-      return o ? String(o.series[o.series.length - 1]!.burntHa) : 'n/a';
++      return o ? String(Math.round(o.series[o.series.length - 1]![f])) : 'n/a';
+     };
+     const wall = (k: string): string => (r[`${k}.${flav}`] ? Math.round(r[`${k}.${flav}`]!.runS).toString() : 'n/a');
+-    runs.push(`| ${s.id} (${role(s.id)}) | ${flav} | ${last('30m')} / ${last('20m')} / ${last('10m')} | ${wall('30m')} / ${wall('20m')} / ${wall('10m')} | ${r[`10m.${flav}`]?.peakRssMB ?? 'n/a'} |`);
++    runs.push(`| ${label(s.id)} | ${flav} | ${last('30m', 'burntHa')} / ${last('20m', 'burntHa')} / ${last('10m', 'burntHa')} | ${last('30m', 'spots')} / ${last('20m', 'spots')} / ${last('10m', 'spots')} | ${wall('30m')} / ${wall('20m')} / ${wall('10m')} | ${r[`10m.${flav}`]?.peakRssMB ?? 'n/a'} |`);
+   }
+-  md.push('**L1. The runs (8 simulated hours, the standard scenario)**', '', ...runs, '');
+-  const dt: string[] = ['| Site | embers | horizon | scored cells | mean / median / 90th percentile of D (min) | median signed (10 m minus 30 m, min) | cells with D of 10 min or more | the 20 % of cells with the largest D carry |', '|---|---|---|---|---|---|---|---|'];
+-  for (const d of diffs) dt.push(`| ${String(d.site)} (${String(d.role)}) | ${String(d.flav)} | ${String(d.H)} h | ${String(d.n)} | ${String(d.meanD)} / ${String(d.medianD)} / ${String(d.p90D)} | ${String(d.medianSigned)} | ${pct(d.shareGE10 as number)} | ${pct(d.top20OfD as number)} |`);
++  md.push('**L1. The runs (8 simulated hours, the standard scenario, seed 1)**', '', ...runs, '');
++
++  const dt: string[] = ['| Site | embers | horizon | scored cells | mean / median / 90th percentile of D (min) | median signed (10 m minus 30 m, min) | cells with D of 10 min or more | the 20 % of scored cells with the largest D carry |', '|---|---|---|---|---|---|---|---|'];
++  for (const d of diffs) dt.push(`| ${label(String(d.site))} | ${String(d.flav)} | ${String(d.H)} h | ${String(d.n)} | ${String(d.meanD)} / ${String(d.medianD)} / ${String(d.p90D)} | ${String(d.medianSigned)} | ${pct(d.shareGE10 as number)} | ${pct(d.top20OfD as number)} |`);
+   md.push('**L2. How the arrival time differs, 30 m against 10 m, on the 30 m grid**', '', ...dt, '');
+-  const main = (flav: string, H: number, metric: 'D' | 'E' = 'D'): string => `g30.30v10.${flav}.${H}h.${metric}`;
+-  for (const [title, flav, H, metric] of [['L3', 'off', 8, 'D'], ['L4', 'on', 8, 'D']] as const) {
+-    const t: string[] = ['| Site | n | ' + [...PREDICTORS].map((p) => `rho ${p}`).join(' | ') + ' | rho mean, arrival held | share carried by top-20 % (mean score) | size of that set among scored | lift | random 95 % band | p random / time-matched / shifted |', '|---|---|' + [...PREDICTORS].map(() => '---').join('|') + '|---|---|---|---|---|---|'];
+-    for (const s of sites) {
+-      const row = cases[`${s.id}|${main(flav, H, metric)}`];
++
++  const cols = [...PREDICTORS];
++  for (const [title, flav] of [['L3', 'off'], ['L4', 'on']] as const) {
++    const t: string[] = [`| Site | scored cells | ${cols.map((p) => `rho ${p}`).join(' | ')} | rho mean, arrival time held |`, `|---|---|${cols.map(() => '---').join('|')}|---|`];
++    for (const s of siteRows()) {
++      const row = get(s.id, main(flav));
++      if (!row) continue;
++      t.push(`| ${label(s.id)} | ${row.mean!.n} | ${cols.map((p) => fmt(row[p]!.rho)).join(' | ')} | ${fmt(row.mean!.rhoPartial)} |`);
++    }
++    md.push(`**${title}. Embers ${flav}, 8 h, 30 m against 10 m: Spearman correlation of D with the score as defined (mean), each group alone, the 30 m slope and the arrival time (two baselines)**`, '', ...t, '');
++  }
++  for (const [title, flav] of [['L5', 'off'], ['L6', 'on']] as const) {
++    const t: string[] = ['| Site | share of the summed D carried by the top-20 % set | random sets of the same size (95 % band; p) | the set holds this share of the scored cells | lift per scored cell | random sets of as many scored cells (95 % band; p) | p time-matched | p moved set: share (95 % band) / lift (95 % band) | most any set of that size could carry | recall of the 20 % largest D (expected) |', '|---|---|---|---|---|---|---|---|---|---|'];
++    for (const s of siteRows()) {
++      const row = get(s.id, main(flav));
++      if (!row) continue;
++      const m = row.mean!;
++      t.push(`| ${label(s.id)} | ${pct(m.share)} | ${pct(m.randomLo)} to ${pct(m.randomHi)}; ${pfmt(m.pRandom)} | ${pct(m.sizeShare)} | ${fmt(m.lift)} | ${pct(m.scoredLo)} to ${pct(m.scoredHi)}; ${pfmt(m.pScored)} | ${pfmt(m.pTimeMatched)} | ${pfmt(m.pShift)} (${pct(m.shiftLo)} to ${pct(m.shiftHi)}) / ${pfmt(m.pShiftLift)} (${fmt(m.shiftLiftLo)} to ${fmt(m.shiftLiftHi)}) | ${pct(m.oracleShare)} | ${pct(m.recall)} (${pct(m.recallExpected)}) |`);
++    }
++    md.push(`**${title}. Embers ${flav}, 8 h, 30 m against 10 m: the top-20 % set of the score as defined**`, '', ...t, '');
++  }
++  {
++    const t: string[] = [`| Site | embers | ${[...PARTS, 'slope30'].map((p) => `lift ${p}`).join(' | ')} |`, `|---|---|${[...PARTS, 'slope30'].map(() => '---').join('|')}|`];
++    for (const s of siteRows()) for (const flav of ['off', 'on'] as const) {
++      const row = get(s.id, main(flav));
++      if (!row) continue;
++      t.push(`| ${label(s.id)} | ${flav} | ${[...PARTS, 'slope30'].map((p) => fmt(row[p]!.lift)).join(' | ')} |`);
++    }
++    md.push('**L7. Lift per scored cell of the top-20 % set of each group alone (8 h, 30 m against 10 m; 1 = no better than a set of as many scored cells chosen at random; the C set is small because most cells have no cliff)**', '', ...t, '');
++  }
++  {
++    const t: string[] = ['| Site | embers | case | scored cells | rho (arrival held) | share carried | lift per scored cell | p random / scored / time-matched / moved (share) / moved (lift) |', '|---|---|---|---|---|---|---|---|'];
++    const others: [string, (f: 'on' | 'off') => PairSpec][] = [
++      ['30 m vs 10 m, 4 h', (f) => main(f, 4)],
++      ['30 m vs 10 m, 8 h, local difference E', (f) => main(f, 8, 'E')],
++      ['60 m blocks, 30 m vs 10 m, 8 h', (f) => ({ grid: 'g60', a: '30', b: '10', flav: f, H: 8, metric: 'D' })],
++      ['60 m blocks, 30 m vs 20 m, 8 h', (f) => ({ grid: 'g60', a: '30', b: '20', flav: f, H: 8, metric: 'D' })],
++      ['60 m blocks, 20 m vs 10 m, 8 h', (f) => ({ grid: 'g60', a: '20', b: '10', flav: f, H: 8, metric: 'D' })],
++    ];
++    for (const s of siteRows()) for (const flav of ['off', 'on'] as const) for (const [name, mk] of others) {
++      const row = get(s.id, mk(flav));
+       if (!row) continue;
+       const m = row.mean!;
+-      t.push(`| ${s.id} (${role(s.id)}) | ${m.n} | ${[...PREDICTORS].map((p) => fmt(row[p]!.rho)).join(' | ')} | ${fmt(m.rhoPartial)} | ${pct(m.share)} | ${pct(m.sizeShare)} | ${fmt(m.lift)} | ${pct(m.randomLo)} to ${pct(m.randomHi)} | ${pfmt(m.pRandom)} / ${pfmt(m.pTimeMatched)} / ${pfmt(m.pShift)} |`);
++      t.push(`| ${label(s.id)} | ${flav} | ${name} | ${m.n} | ${fmt(m.rho)} (${fmt(m.rhoPartial)}) | ${pct(m.share)} | ${fmt(m.lift)} | ${pfmt(m.pRandom)} / ${pfmt(m.pScored)} / ${pfmt(m.pTimeMatched)} / ${pfmt(m.pShift)} / ${pfmt(m.pShiftLift)} |`);
++    }
++    md.push('**L8. The score as defined in the other cases (the p values are given only where the case has them)**', '', ...t, '');
++  }
++  {
++    const t: string[] = ['| Site | horizon | scored cells | mean / median / 90th percentile of D (min) | rho of the score | rho (arrival held) | lift per scored cell |', '|---|---|---|---|---|---|---|'];
++    for (const s of siteRows()) for (const H of [8, 4] as const) {
++      const spec: PairSpec = { grid: 'g30', a: '30', b: '30', flav: 'on', flavB: 'on2', H, metric: 'D' };
++      const row = get(s.id, spec);
++      const c = built[`${s.id}|${key(spec)}`];
++      if (!row || !c) continue;
++      const d = Float64Array.from(c.U, (k) => c.D[k]!);
++      const m = row.mean!;
++      t.push(`| ${label(s.id)} | ${H} h | ${m.n} | ${fmt(mean(d))} / ${fmt(median(d))} / ${fmt(quantile(Float64Array.from(d).sort(), 0.9))} | ${fmt(m.rho)} | ${fmt(m.rhoPartial)} | ${fmt(m.lift)} |`);
++    }
++    md.push('**L9. The size of chance: the same 30 m scenario with embers on at seed 1 and at seed 2**', '', ...t, '');
++  }
++  if (tuned.rows) {
++    const rows = tuned.rows as Record<string, Record<string, Stat>>;
++    const t: string[] = ['| Site | embers | rho: as defined / tuned / best single group | share carried: as defined / tuned / best single | lift per scored cell: as defined / tuned / best single |', '|---|---|---|---|---|'];
++    for (const [k, v] of Object.entries(rows)) {
++      const [id, flav] = k.split('|') as [string, string];
++      t.push(`| ${label(id)} | ${flav} | ${fmt(v.asDefined!.rho)} / ${fmt(v.tuned!.rho)} / ${fmt(v.bestSingle!.rho)} | ${pct(v.asDefined!.share)} / ${pct(v.tuned!.share)} / ${pct(v.bestSingle!.share)} | ${fmt(v.asDefined!.lift)} / ${fmt(v.tuned!.lift)} / ${fmt(v.bestSingle!.lift)} |`);
+     }
+-    md.push(`**${title}. Embers ${flav}, horizon ${H} h: rank correlation of each part with D, and the top-20 % set of the score as defined**`, '', ...t, '');
++    md.push(`**L10. Re-weighting fitted on the development sites only (weights S, C, G, L, R = ${JSON.stringify(tuned.weights)}; best single group ${String(tuned.bestSingle)}; in-sample mean rho ${String(tuned.devRhoInSample)}); the development rows are in-sample and are not a result**`, '', ...t, '');
+   }
+   writeFileSync(`${DATA}ladder-tables.md`, `${md.join('\n')}\n`);
+   log(`wrote ${DATA}ladder-scores.json and ladder-tables.md`);
+
+From 39a036b142f4b530ab8776c14071b678dcb1f32f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 08:30:28 +0000
+Subject: [PATCH 4/5] Grid-difference plan: the two measures added after the
+ first look at a development site
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ .../adaptive-simulation-quality/01-grid-difference/README.md  | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/studies/adaptive-simulation-quality/01-grid-difference/README.md b/studies/adaptive-simulation-quality/01-grid-difference/README.md
+index d4b263b..5973299 100644
+--- a/studies/adaptive-simulation-quality/01-grid-difference/README.md
++++ b/studies/adaptive-simulation-quality/01-grid-difference/README.md
+@@ -35,6 +35,10 @@ fire's path, so D says where a gap has grown and E where it was made.
+ (the 20 % of the whole domain with the highest score, as the quality map defines it), with the share the cells of the set would carry by size alone, and the most any set of that size could carry; (3) against **random sets of the same size**, against random sets
+ with the same number of cells in each tenth of the arrival-time range, and against **the same set moved elsewhere** on the map (the eight symmetries of the square and wrap-around shifts, which keep the set's shape: complex cells and large differences both come in
+ patches, so scattered random sets are too easy a comparison); (4) recall of the cells with the largest D (top 20 % of the scored cells) by the top-20 % set. Draws: 2000 random, 1000 time-matched, 1000 moved, 400 for the correlation; seeded.
++**Added after the first look at Katoomba (a development site; no hold-out site had been scored; committed before the other sites were scored):** random sets of the same size drawn from the whole domain
++carry 20 % of the difference by definition, but a set that holds cliff faces and ground the fire never reaches has fewer than 20 % of the scored cells, so that comparison also charges the set for cells the front never visits. Two things were added and both are
++reported next to it: the **lift per scored cell** (the share carried over the share of the scored cells the set holds; 1 is chance), tested against random sets with as many scored cells and against the moved set's own lift (the moved-set test of the share mixes the
++lift with how much of the burnt ground the moved set covers). The tests that treat cells as exchangeable (random sets) overstate the evidence, because both the difference and the complexity come in patches; the moved-set test is the one to read.
+ 
+ **The tuned version.** Weights of the five groups on a grid of step 0.1 (1001 vectors), chosen to maximise the mean rank correlation with D over the development sites (30 m against 10 m, 8 h, both embers settings); its numbers on the hold-out sites are reported next to the score as defined.
+ The best single group is chosen the same way.
+
+From 18f8397e207c1982b0b7dd637df18c83ffbe7a83 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 09:45:56 +0000
+Subject: [PATCH 5/5] WIP: stopped by the orchestrator at the owner's request;
+ not reviewed, not merged
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ .../scripts/11_ladder.batch.mjs               |   7 +-
+ .../scripts/14_figures.run.ts                 | 250 ++++++++++++++++++
+ 2 files changed, 254 insertions(+), 3 deletions(-)
+ create mode 100644 studies/adaptive-simulation-quality/scripts/14_figures.run.ts
+
+diff --git a/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs b/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs
+index ce41ec8..d81b7c6 100644
+--- a/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs
++++ b/studies/adaptive-simulation-quality/scripts/11_ladder.batch.mjs
+@@ -36,11 +36,11 @@ for (const site of SITES) {
+ }
+ log(`batch of ${rows.length} rows`);
+ // Lock turns: consecutive rows are run together in one turn while their estimated time (minutes: 30 m about 1, 20 m 2, 10 m 7 on an idle
+-// core) stays within a budget, so a long queue for the lock costs fewer waits and other jobs still get it every quarter of an hour or so.
++// core) stays within a budget (LADDER_TURN_MIN, default 34), so a long queue for the lock costs fewer waits.
+ const todo = rows.filter((spec) => !(existsSync(resolve(outDir, `${spec.id}.fields.gz`)) && existsSync(resolve(outDir, `${spec.id}.json`))));
+ for (const spec of rows) if (!todo.includes(spec)) log(`skip ${spec.id} (done)`);
+ const EST_MIN = { 30: 1, 20: 2, 10: 7 };
+-const BUDGET_MIN = 16;
++const BUDGET_MIN = Number(process.env.LADDER_TURN_MIN ?? 34);
+ const turns = [];
+ let spent = 0;
+ for (const spec of todo) {
+@@ -53,7 +53,8 @@ for (const spec of todo) {
+     spent = EST_MIN[spec.cell];
+   }
+ }
+-const INNER = 'L="$0"; while [ "$#" -gt 1 ]; do node --expose-gc --max-old-space-size=4096 "$L" "$1" "$2"; shift 2; done';
++// (a row whose output exists when its turn starts is skipped, so two batches started by mistake do not repeat a row)
++const INNER = 'L="$0"; while [ "$#" -gt 1 ]; do [ -e "$2" ] || node --expose-gc --max-old-space-size=4096 "$L" "$1" "$2"; shift 2; done';
+ for (const turn of turns) {
+   const args = [];
+   for (const spec of turn) {
+diff --git a/studies/adaptive-simulation-quality/scripts/14_figures.run.ts b/studies/adaptive-simulation-quality/scripts/14_figures.run.ts
+new file mode 100644
+index 0000000..3cb40cd
+--- /dev/null
++++ b/studies/adaptive-simulation-quality/scripts/14_figures.run.ts
+@@ -0,0 +1,250 @@
++/**
++ * Step 6: the figures of the grid-difference study, from `data/ladder-scores.json` and the containers `data/ladder-<site>.gz`
++ * (13_score.run.ts has to have run). Writes into `figures/`: three SVG charts (plain SVG made here, no dependency; light and dark by the viewer's
++ * setting) and a four-panel map per site in AQ_FIGS (PNG, north up, same drawing code as the quality map).
++ *
++ *   npx vitest run --config studies/adaptive-simulation-quality/vitest.config.ts 14_figures
++ *
++ * Colours: the validated reference palette of the dataviz skill (blue and orange as the two series, a neutral mid for the zero of the
++ * correlation map); the tables of the study note carry every number the charts show.
++ */
++import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
++import { it } from 'vitest';
++import { topShare } from './lib/analysis';
++import { loadLadder } from './lib/ladderio';
++import { writePanels, type Panel } from './lib/png';
++import { quantile } from './lib/stats';
++
++const DATA = process.env.AQ_DATA ?? new URL('../data/', import.meta.url).pathname;
++const FIG = process.env.AQ_FIG ?? new URL('../figures/', import.meta.url).pathname;
++const DEV = ['katoomba', 'thredbo', 'warrumbungles'];
++const HOLD = ['grose', 'kanangra', 'tomah'];
++const NAMES: Record<string, string> = { katoomba: 'Katoomba', thredbo: 'Thredbo', warrumbungles: 'Warrumbungles', grose: 'Blackheath', kanangra: 'Kanangra', tomah: 'Mount Tomah' };
++const FIGS = (process.env.AQ_FIGS ?? 'katoomba,grose').split(',');
++const log = (s: string): void => {
++  process.stderr.write(`[figures] ${s}\n`);
++};
++
++interface StatLite {
++  rho: number;
++  rhoPartial: number;
++  lift: number;
++  share: number;
++  sizeShare: number;
++  shiftLiftLo?: number;
++  shiftLiftHi?: number;
++  pShiftLift?: number;
++}
++interface Scores {
++  cases: Record<string, Record<string, StatLite>>;
++  deciles: Record<string, { mean: { meanD: number[] } }>;
++}
++
++const STYLE = `
++:root{--bg:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--grid:#dddcd7;--mid:#e9e8e4;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--band:#d9d8d3}
++@media (prefers-color-scheme: dark){:root{--bg:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--grid:#383836;--mid:#34332f;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--band:#3b3b38}}
++text{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;fill:var(--ink)}
++.t2{fill:var(--ink2)}.small{font-size:12px}.lab{font-size:13px}.ttl{font-size:15px;font-weight:600}
++`;
++
++const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
++
++function svgDoc(w: number, h: number, title: string, desc: string, body: string): string {
++  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-labelledby="t d"><title id="t">${esc(title)}</title><desc id="d">${esc(desc)}</desc><style>${STYLE}</style><rect width="${w}" height="${h}" fill="var(--bg)"/>${body}</svg>\n`;
++}
++
++const f1 = (x: number): string => x.toFixed(1);
++
++/** Figure A: the lift per scored cell of the top-20 % set, by site, with the band the same set moved elsewhere on the map gives. */
++function figLift(sc: Scores, sites: string[]): string {
++  const W = 720;
++  const rowH = 26;
++  const left = 120;
++  const right = 40;
++  const plotW = W - left - right;
++  let maxX = 2;
++  const flavs = ['off', 'on'] as const;
++  for (const f of flavs) for (const s of sites) {
++    const c = sc.cases[`${s}|g30.30v10.${f}.8h.D`];
++    if (!c) continue;
++    maxX = Math.max(maxX, c.mean!.lift, c.slope30!.lift, c.mean!.shiftLiftHi ?? 0);
++  }
++  maxX = Math.ceil(maxX * 2) / 2;
++  const X = (v: number): number => left + (v / maxX) * plotW;
++  let y = 52;
++  let body = `<text x="16" y="24" class="ttl">Does the complexity score point at where the grids differ?</text><text x="16" y="42" class="small t2">Lift per scored cell of the top-20 % set, 30 m against 10 m, 8 h (1 = no better than chance)</text>`;
++  for (const f of flavs) {
++    const rows = sites.filter((s) => sc.cases[`${s}|g30.30v10.${f}.8h.D`]);
++    y += 22;
++    body += `<text x="16" y="${y}" class="lab" font-weight="600">Embers ${f === 'off' ? 'off (the grid alone)' : 'on (as in the standard scenario)'}</text>`;
++    const top = y + 8;
++    const bottom = top + rows.length * rowH + 8;
++    for (let v = 0; v <= maxX + 1e-9; v += 0.5) body += `<line x1="${f1(X(v))}" x2="${f1(X(v))}" y1="${top}" y2="${bottom}" stroke="var(--grid)" stroke-width="1"/><text x="${f1(X(v))}" y="${bottom + 14}" class="small t2" text-anchor="middle">${v}</text>`;
++    body += `<line x1="${f1(X(1))}" x2="${f1(X(1))}" y1="${top}" y2="${bottom}" stroke="var(--ink2)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
++    rows.forEach((s, i) => {
++      const c = sc.cases[`${s}|g30.30v10.${f}.8h.D`]!;
++      const cy = top + 16 + i * rowH;
++      const isHold = HOLD.includes(s);
++      body += `<text x="${left - 10}" y="${cy + 4}" class="lab" text-anchor="end">${esc(NAMES[s] ?? s)}${isHold ? ' *' : ''}</text>`;
++      if (c.mean!.shiftLiftLo !== undefined && c.mean!.shiftLiftHi !== undefined) body += `<rect x="${f1(X(c.mean!.shiftLiftLo))}" y="${cy - 7}" width="${f1(Math.max(1, X(c.mean!.shiftLiftHi) - X(c.mean!.shiftLiftLo)))}" height="14" rx="3" fill="var(--band)"/>`;
++      body += `<path d="M${f1(X(c.slope30!.lift))} ${cy - 6} l6 6 l-6 6 l-6 -6 z" fill="var(--s2)" stroke="var(--bg)" stroke-width="2"/>`;
++      body += `<circle cx="${f1(X(c.mean!.lift))}" cy="${cy}" r="6" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>`;
++      body += `<text x="${f1(Math.max(X(c.mean!.lift), X(c.slope30!.lift)) + 12)}" y="${cy + 4}" class="small t2">${c.mean!.lift.toFixed(2)}</text>`;
++    });
++    y = bottom + 20;
++  }
++  y += 14;
++  body += `<circle cx="${left}" cy="${y}" r="6" fill="var(--s1)"/><text x="${left + 12}" y="${y + 4}" class="small">the score as defined</text>`;
++  body += `<path d="M${left + 150} ${y - 6} l6 6 l-6 6 l-6 -6 z" fill="var(--s2)"/><text x="${left + 164}" y="${y + 4}" class="small">the 30 m slope alone</text>`;
++  body += `<rect x="${left + 310}" y="${y - 7}" width="26" height="14" rx="3" fill="var(--band)"/><text x="${left + 344}" y="${y + 4}" class="small">the same set moved elsewhere (95 % of draws)</text>`;
++  body += `<text x="16" y="${y + 24}" class="small t2">* hold-out site: scored once, after the plan was fixed. One realisation per site.</text>`;
++  const H = y + 40;
++  return svgDoc(W, H, 'Lift of the top-20 % complexity set', 'For each site, with embers off and on, the lift per scored cell of the top-20 percent complexity set and of the top-20 percent slope set, against the band that the same set moved elsewhere on the map gives. A lift of 1 is chance.', body);
++}
++
++/** Figure B: the rank correlations of every group, the score and two baselines with D. */
++function figRho(sc: Scores, sites: string[]): string {
++  const cols: [string, string][] = [['S', 'steepness'], ['C', 'cliff'], ['G', 'gully'], ['L', 'landform'], ['R', '10 m relief'], ['mean', 'score'], ['slope30', '30 m slope'], ['arrival', 'arrival time']];
++  const W = 720;
++  const left = 150;
++  const cw = (W - left - 16) / cols.length;
++  const rh = 24;
++  const rows: { id: string; f: 'off' | 'on' }[] = [];
++  for (const f of ['off', 'on'] as const) for (const s of sites) if (sc.cases[`${s}|g30.30v10.${f}.8h.D`]) rows.push({ id: s, f });
++  let body = `<text x="16" y="24" class="ttl">Rank correlation of each group with the difference D</text><text x="16" y="42" class="small t2">Spearman, 30 m against 10 m, 8 h; blue = larger D where the score is larger, orange = the opposite</text>`;
++  cols.forEach(([, name], j) => {
++    body += `<text x="${f1(left + j * cw + cw / 2)}" y="68" class="small" text-anchor="middle">${esc(name)}</text>`;
++  });
++  rows.forEach((r, i) => {
++    const y = 78 + i * rh + (r.f === 'on' ? 10 : 0);
++    const c = sc.cases[`${r.id}|g30.30v10.${r.f}.8h.D`]!;
++    body += `<text x="${left - 8}" y="${y + 16}" class="lab" text-anchor="end">${esc(NAMES[r.id] ?? r.id)}${HOLD.includes(r.id) ? ' *' : ''} · ${r.f}</text>`;
++    cols.forEach(([p], j) => {
++      const v = c[p]!.rho;
++      const m = Math.min(70, Math.round((Math.abs(v) / 0.6) * 70));
++      const fill = Number.isFinite(v) ? `color-mix(in srgb, var(${v >= 0 ? '--s1' : '--s2'}) ${m}%, var(--mid))` : 'var(--mid)';
++      body += `<rect x="${f1(left + j * cw + 1)}" y="${y}" width="${f1(cw - 2)}" height="${rh - 2}" rx="3" fill="${fill}"/><text x="${f1(left + j * cw + cw / 2)}" y="${y + 16}" class="small" text-anchor="middle">${Number.isFinite(v) ? v.toFixed(2) : 'n/a'}</text>`;
++    });
++  });
++  const H = 78 + rows.length * rh + 40;
++  body += `<text x="16" y="${H - 16}" class="small t2">off = embers off, on = embers on. * hold-out site. The arrival time is a baseline that knows nothing of the terrain.</text>`;
++  return svgDoc(W, H, 'Rank correlation of each complexity group with the difference', 'A table of Spearman correlations between the difference in arrival time and each complexity group, the score, the 30 m slope and the arrival time, for each site with embers off and on.', body);
++}
++
++/** Figure C: mean D in ten equal-count groups of the score, as an index of the site's own mean (1 = the site's average). */
++function figDeciles(sc: Scores, sites: string[]): string {
++  const W = 720;
++  const left = 56;
++  const pw = (W - left - 120) / 2 - 24;
++  const ph = 190;
++  const colors = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6'];
++  let maxY = 1.5;
++  const series: { s: string; f: 'off' | 'on'; v: number[] }[] = [];
++  for (const f of ['off', 'on'] as const) for (const s of sites) {
++    const d = sc.deciles[`${s}|g30.30v10.${f}.8h.D`];
++    if (!d) continue;
++    const m = d.mean.meanD;
++    const avg = m.reduce((a, b) => a + b, 0) / m.length;
++    const v = m.map((x) => x / avg);
++    maxY = Math.max(maxY, ...v);
++    series.push({ s, f, v });
++  }
++  maxY = Math.ceil(maxY * 2) / 2;
++  let body = `<text x="16" y="24" class="ttl">Does D rise with the score?</text><text x="16" y="42" class="small t2">Mean difference D in ten equal groups of the score (1 = lowest tenth), as a multiple of the site's own mean; 30 m against 10 m, 8 h</text>`;
++  (['off', 'on'] as const).forEach((f, pi) => {
++    const x0 = left + pi * (pw + 110);
++    const y0 = 76;
++    const X = (i: number): number => x0 + (i / 9) * pw;
++    const Y = (v: number): number => y0 + ph - (v / maxY) * ph;
++    body += `<text x="${x0}" y="${y0 - 10}" class="lab" font-weight="600">Embers ${f}</text>`;
++    for (let v = 0; v <= maxY + 1e-9; v += 0.5) body += `<line x1="${x0}" x2="${x0 + pw}" y1="${f1(Y(v))}" y2="${f1(Y(v))}" stroke="var(--grid)"/><text x="${x0 - 6}" y="${f1(Y(v) + 4)}" class="small t2" text-anchor="end">${v}</text>`;
++    body += `<line x1="${x0}" x2="${x0 + pw}" y1="${f1(Y(1))}" y2="${f1(Y(1))}" stroke="var(--ink2)" stroke-dasharray="4 3"/>`;
++    for (let i = 0; i < 10; i += 3) body += `<text x="${f1(X(i))}" y="${y0 + ph + 16}" class="small t2" text-anchor="middle">${i + 1}</text>`;
++    body += `<text x="${f1(x0 + pw / 2)}" y="${y0 + ph + 34}" class="small t2" text-anchor="middle">tenth of the scored cells, by the score</text>`;
++    series.filter((q) => q.f === f).forEach((q) => {
++      const ci = sites.indexOf(q.s);
++      const col = colors[ci % colors.length]!;
++      const pts = q.v.map((v, i) => `${f1(X(i))},${f1(Y(v))}`).join(' ');
++      body += `<polyline points="${pts}" fill="none" stroke="var(--${col.slice(2)})" stroke-width="2" ${HOLD.includes(q.s) ? 'stroke-dasharray="6 3"' : ''} stroke-linejoin="round"/>`;
++    });
++  });
++  // direct labels (right of the second panel) and a legend for the line style
++  const lastPanelX = left + (pw + 110) + pw;
++  const labelled = series.filter((q) => q.f === 'on');
++  labelled.sort((a, b) => b.v[9]! - a.v[9]!);
++  let prevY = -1e9;
++  const y0 = 76;
++  const ph2 = ph;
++  for (const q of labelled) {
++    let yy = y0 + ph2 - (q.v[9]! / maxY) * ph2;
++    if (yy - prevY < 13) yy = prevY + 13;
++    prevY = yy;
++    const col = colors[sites.indexOf(q.s) % colors.length]!;
++    body += `<rect x="${f1(lastPanelX + 8)}" y="${f1(yy - 5)}" width="10" height="3" fill="var(--${col.slice(2)})"/><text x="${f1(lastPanelX + 22)}" y="${f1(yy + 1)}" class="small">${esc(NAMES[q.s] ?? q.s)}${HOLD.includes(q.s) ? ' *' : ''}</text>`;
++  }
++  const H = 76 + ph + 76;
++  body += `<text x="16" y="${H - 14}" class="small t2">Solid: development site. Dashed and *: hold-out site. The dashed grey line is the site's average.</text>`;
++  return svgDoc(W, H, 'The difference by tenth of the complexity score', 'Lines, one per site, of the mean arrival-time difference in ten equal-count groups of the complexity score, as a multiple of the site mean, with embers off and on.', body);
++}
++
++const CATS: [number, number, number][] = [
++  [58, 58, 56],
++  [57, 135, 229],
++  [235, 104, 52],
++  [253, 231, 37],
++];
++
++it('draw the figures', () => {
++  const scoresPath = `${DATA}ladder-scores.json`;
++  if (!existsSync(scoresPath)) throw new Error('no ladder-scores.json: run 13_score first');
++  const sc = JSON.parse(readFileSync(scoresPath, 'utf8')) as Scores;
++  mkdirSync(FIG, { recursive: true });
++  const sites = [...DEV, ...HOLD].filter((s) => existsSync(`${DATA}ladder-${s}.gz`));
++  writeFileSync(`${FIG}ladder-lift.svg`, figLift(sc, sites));
++  writeFileSync(`${FIG}ladder-rho.svg`, figRho(sc, sites));
++  writeFileSync(`${FIG}ladder-deciles.svg`, figDeciles(sc, sites));
++  log(`charts for ${sites.join(', ')}`);
++
++  for (const site of FIGS) {
++    const path = `${DATA}ladder-${site}.gz`;
++    if (!existsSync(path)) continue;
++    const { meta, u8, u16 } = loadLadder(path);
++    const g = meta.grid30 as { nx: number; ny: number; cellSize: number; x0: number; y0: number };
++    const n = g.nx * g.ny;
++    const score = new Float64Array(n);
++    for (let k = 0; k < n; k++) score[k] = (u16.S![k]! + u16.C![k]! + u16.G![k]! + u16.L![k]! + u16.R![k]!) / 5 / 1023;
++    const top = topShare(score, 0.2);
++    const dMap = (flav: string): { v: Float32Array; inU: Uint8Array; d: Float64Array } => {
++      const x = u16[`g30.30.${flav}.8h`]!;
++      const y = u16[`g30.10.${flav}.8h`]!;
++      const cx = u8[`n30.30.${flav}.8h`]!;
++      const cy = u8[`n30.10.${flav}.8h`]!;
++      const v = new Float32Array(n).fill(NaN);
++      const inU = new Uint8Array(n);
++      const d = new Float64Array(n);
++      for (let k = 0; k < n; k++) {
++        if (!u8.flam30![k] || (cx[k] === 0 && cy[k] === 0)) continue;
++        inU[k] = 1;
++        d[k] = Math.abs(y[k]! - x[k]!) / 6;
++        v[k] = Math.min(1, Math.log1p(d[k]!) / Math.log1p(480));
++      }
++      return { v, inU, d };
++    };
++    const off = dMap('off');
++    const on = dMap('on');
++    const vals = Float64Array.from(off.d.filter((_, k) => off.inU[k])).sort();
++    const cut = quantile(vals, 0.8);
++    const cat = new Float32Array(n);
++    for (let k = 0; k < n; k++) cat[k] = (top[k] ? 1 : 0) + (off.inU[k] && off.d[k]! >= cut ? 2 : 0);
++    const dim = Uint8Array.from(u8.flam30!, (v) => (v ? 0 : 1));
++    const ign = meta.ignition as { x: number; y: number };
++    const panels: Panel[] = [
++      { values: score, dim, mark: ign },
++      { values: off.v, dim, mark: ign },
++      { values: on.v, dim, mark: ign },
++      { values: cat, categories: CATS, dim },
++    ];
++    const bytes = writePanels(`${FIG}ladder-map-${site}.png`, g, panels, 2);
++    log(`${site}: map ${(bytes / 1024).toFixed(0)} kB`);
++  }
++}, 300_000);

@@ -40,6 +40,11 @@ export interface PaceSheetInput {
   engine: PaceSheetEngine | null;
   /** Simulated seconds from the clock to the end of the run. */
   remainingS: number;
+  /**
+   * Which computer measured the speed (0.9.0, D35): the desktop when the run computes there. The figures are the engine's own (`perf`, measured by the
+   * engine that computes the run, so the desktop's), never this phone's speed test; only the words change. Absent: this phone.
+   */
+  where?: 'desktop';
 }
 
 export type PaceRowId = 'air' | 'fire' | 'embers' | 'other';
@@ -196,9 +201,10 @@ export function playAtSpeed(pace: Pick<PaceInfo, 'wanted' | 'achieved' | 'capaci
 
 // ───────────────────────────── the sentences ─────────────────────────────
 
-function lead(pace: PaceInfo | null): { state: PaceSheetView['state']; title: string; lead: string } {
+function lead(pace: PaceInfo | null, desktop = false): { state: PaceSheetView['state']; title: string; lead: string } {
+  const who = desktop ? 'the desktop' : 'this phone';
   if (!pace || pace.level === 'ok') {
-    const asked = pace ? ` You asked for ${speedWord(pace.wanted)}${known(pace.capacity) ? `; this phone is computing about ${speedWord(pace.capacity)} right now` : ''}.` : '';
+    const asked = pace ? ` You asked for ${speedWord(pace.wanted)}${known(pace.capacity) ? `; ${who} is computing about ${speedWord(pace.capacity)} right now` : ''}.` : '';
     return { state: 'ok', title: 'Keeping up with playback', lead: `The simulation is keeping up now.${asked}` };
   }
   const title = 'Running slower than playback';
@@ -211,7 +217,7 @@ function lead(pace: PaceInfo | null): { state: PaceSheetView['state']; title: st
   const share = Number.isFinite(pace.waitingShare) ? Math.min(1, Math.max(0, pace.waitingShare)) : 0;
   const waits = Math.round(share * 10);
   const wait = waits >= 10 ? 'almost all the time' : waits >= 1 ? `about ${waits} ${waits === 1 ? 'second' : 'seconds'} in every 10` : 'now and then';
-  const mid = known(pace.capacity) ? `This phone is computing about ${speedWord(pace.capacity)} right now, so playback waits` : 'Playback waits';
+  const mid = known(pace.capacity) ? `${who.charAt(0).toUpperCase()}${who.slice(1)} is computing about ${speedWord(pace.capacity)} right now, so playback waits` : 'Playback waits';
   return { state: 'waiting', title, lead: `You asked for ${speedWord(pace.wanted)} (${fireEvery(pace.wanted)}). ${mid} for the simulation ${wait}.` };
 }
 
@@ -221,7 +227,7 @@ interface Reason {
   short: string;
 }
 
-function reasonList(pace: PaceInfo, engine: PaceSheetEngine | null, g: Groups | null): Reason[] {
+function reasonList(pace: PaceInfo, engine: PaceSheetEngine | null, g: Groups | null, desktop = false): Reason[] {
   const out: Reason[] = [];
   const tier = engine?.tier;
   if (g && (tier === 'standard' || tier === 'high') && g.shares.air > REASON_SHARE.air) {
@@ -234,7 +240,7 @@ function reasonList(pace: PaceInfo, engine: PaceSheetEngine | null, g: Groups | 
   const earlier = earlierSpeed(engine?.perf?.history);
   if (earlier !== null && known(pace.capacity) && pace.capacity < SLOWER_THAN_EARLIER * earlier) {
     out.push({
-      text: `Slower than before (about ${speedWord(earlier)} earlier in this run). The phone may be warm or in battery saver.`,
+      text: `Slower than before (about ${speedWord(earlier)} earlier in this run). ${desktop ? 'The desktop may be busy with other work.' : 'The phone may be warm or in battery saver.'}`,
       short: `slower than before (about ${speedWord(earlier)} earlier in this run)`,
     });
   }
@@ -269,7 +275,8 @@ export function paceSheet(input: PaceSheetInput): PaceSheetView {
   const { engine } = input;
   // A reading that does not say what was asked for cannot be explained: treat it as no reading.
   const pace = input.pace && known(input.pace.wanted) && Number.isFinite(input.pace.wanted) ? input.pace : null;
-  const head = lead(pace);
+  const desktop = input.where === 'desktop';
+  const head = lead(pace, desktop);
   const g = groups(engine?.perf);
   const tier = engine?.tier;
 
@@ -298,10 +305,10 @@ export function paceSheet(input: PaceSheetInput): PaceSheetView {
     ...head,
     result: { question: 'Does it change the result?', answer: 'No. The same choices give the same fire at any speed. It only takes longer to appear.' },
     time,
-    reasons: pace && pace.level !== 'ok' ? reasonList(pace, engine, g).map((r) => r.text) : [],
+    reasons: pace && pace.level !== 'ok' ? reasonList(pace, engine, g, desktop).map((r) => r.text) : [],
     actions,
     end: pace && pace.level !== 'ok' ? endLine(pace, input.remainingS) : null,
     link: 'All the numbers',
-    footnote: 'Measured on this phone, over the last 10 seconds.',
+    footnote: desktop ? "Measured by the desktop's own engine while it computes this run, over the last 10 seconds. No test of this phone is used." : 'Measured on this phone, over the last 10 seconds.',
   };
 }

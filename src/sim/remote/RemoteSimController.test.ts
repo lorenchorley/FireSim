@@ -8,7 +8,8 @@ import { EMPTY_CONTEXT } from '../../core/places';
 import type { FromWorker, ToWorker } from '../protocol';
 import { pointIgnition, syntheticScenario } from '../testing/scenarios';
 import { decodeMessage, encodeMessage } from './codec';
-import { RemoteAuthError, RemoteSimController, type SocketLike } from './RemoteSimController';
+import { RemoteAuthError, RemoteSimController, RemoteVersionError, type SocketLike } from './RemoteSimController';
+import { TOO_BIG_MESSAGE } from './wire';
 
 class FakeSocket implements SocketLike {
   static all: FakeSocket[] = [];
@@ -16,7 +17,7 @@ class FakeSocket implements SocketLike {
   readyState = 0;
   onopen: ((ev: unknown) => void) | null = null;
   onmessage: ((ev: { data: unknown }) => void) | null = null;
-  onclose: ((ev: { code: number }) => void) | null = null;
+  onclose: ((ev: { code: number; reason?: string }) => void) | null = null;
   onerror: ((ev: unknown) => void) | null = null;
   sent: (string | Uint8Array)[] = [];
   closedWith: number | null = null;
@@ -43,11 +44,11 @@ class FakeSocket implements SocketLike {
     this.say(f.buffer.slice(f.byteOffset, f.byteOffset + f.byteLength));
   }
   welcome(): void {
-    this.say(JSON.stringify({ type: 'welcome', session: 'abc123', protocol: 1 }));
+    this.say(JSON.stringify({ type: 'welcome', session: 'abc123', protocol: 2, name: 'Test desk', cores: 8, node: '22.22.0', sessions: 1, maxSessions: 3 }));
   }
-  hangUp(code: number): void {
+  hangUp(code: number, reason?: string): void {
     this.readyState = 3;
-    this.onclose?.({ code });
+    this.onclose?.({ code, ...(reason !== undefined ? { reason } : {}) });
   }
   /** The binary frames sent so far, decoded. */
   messages(): ToWorker[] {
@@ -85,10 +86,11 @@ describe('connect', () => {
     expect(s.binaryType).toBe('arraybuffer');
     expect(s.sent).toEqual([]); // nothing before the socket is open
     s.open();
-    expect(s.sent).toEqual([JSON.stringify({ type: 'hello', protocol: 1, code: 'ABCD2345' })]);
+    expect(s.sent).toEqual([JSON.stringify({ type: 'hello', protocol: 2, code: 'ABCD2345' })]);
     s.welcome();
     await p;
     expect(c.session).toBe('abc123');
+    expect(c.info).toEqual({ app: 'firesim-desktop-host', protocol: 2, name: 'Test desk', cores: 8, node: '22.22.0', sessions: 1, maxSessions: 3 });
     expect(c.rttMs()).toBeNull();
     expect(s.messages()).toEqual([expect.objectContaining({ type: 'ping' })]);
   });
@@ -150,15 +152,61 @@ describe('connect', () => {
     expect(s.closedWith).toBe(1000);
   });
 
-  it('rejects a first frame that is not a welcome of this protocol', async () => {
-    for (const first of [new ArrayBuffer(8), 'hello', JSON.stringify({ type: 'welcome', protocol: 2, session: 'x' }), JSON.stringify({ type: 'welcome', protocol: 1 })]) {
+  it('rejects a first frame that is not a welcome of this protocol, with all of what the host is: a welcome without it is something unexpected', async () => {
+    const good = { type: 'welcome', protocol: 2, session: 'x', name: 'Desk', cores: 8, node: '22.22.0', sessions: 1, maxSessions: 3 };
+    const wrong = (patch: Record<string, unknown>): string => JSON.stringify({ ...good, ...patch });
+    for (const first of [new ArrayBuffer(8), 'hello', 'not json', 'null', '[]', JSON.stringify({ type: 'welcome', protocol: 2, session: 'x' }), wrong({ name: 5 }), wrong({ name: undefined }), wrong({ cores: '8' }), wrong({ cores: -1 }), wrong({ sessions: 1.5 }), wrong({ maxSessions: undefined }), wrong({ node: 22 }), wrong({ session: 7 }), wrong({ protocol: '2' }), wrong({ protocol: undefined }), wrong({ type: 'hello' })]) {
       const p = new RemoteSimController().connect({ url: URL_, code: 'X', WebSocketCtor: Ctor }).catch((e: unknown) => e);
       const s = FakeSocket.all.at(-1)!;
       s.open();
       s.say(first);
-      expect(((await p) as Error).message).toBe('The desktop sent something unexpected.');
+      const err = (await p) as Error;
+      expect(err.message, String(first)).toBe('The desktop sent something unexpected.');
+      expect(err).not.toBeInstanceOf(RemoteVersionError);
       expect(s.closedWith).toBe(1000);
     }
+  });
+
+  it('keeps the welcome as the host said it, cut to a sane length (a name of 64 characters at most)', async () => {
+    const c = new RemoteSimController();
+    const p = c.connect({ url: URL_, code: 'X', WebSocketCtor: Ctor });
+    const s = FakeSocket.all.at(-1)!;
+    s.open();
+    s.say(JSON.stringify({ type: 'welcome', protocol: 2, session: 's', name: 'N'.repeat(500), cores: 4, node: '22.0.0', sessions: 0, maxSessions: 1, extra: 'ignored' }));
+    await p;
+    expect(c.info!.name).toBe('N'.repeat(64));
+    expect(Object.keys(c.info!).sort()).toEqual(['app', 'cores', 'maxSessions', 'name', 'node', 'protocol', 'sessions']);
+  });
+
+  it('a welcome of another version of the link is a RemoteVersionError with both numbers, and the socket is let go', async () => {
+    for (const hostVersion of [1, 3, 99]) {
+      const p = new RemoteSimController().connect({ url: URL_, code: 'X', WebSocketCtor: Ctor }).catch((e: unknown) => e);
+      const s = FakeSocket.all.at(-1)!;
+      s.open();
+      s.say(JSON.stringify({ type: 'welcome', session: 'x', protocol: hostVersion }));
+      const err = (await p) as RemoteVersionError;
+      expect(err).toBeInstanceOf(RemoteVersionError);
+      expect(err).toMatchObject({ pageProtocol: 2, hostProtocol: hostVersion, name: 'RemoteVersionError' });
+      expect(err.message).toBe(`The app and the desktop host do not speak the same version of the link (the app 2, the host ${hostVersion}). Update the app or the host.`);
+      expect(s.closedWith).toBe(1000);
+    }
+  });
+
+  it('a host that refuses the hello for its version (4426) says its own in the close reason: a RemoteVersionError, and not a wrong code', async () => {
+    const outcome = async (code: number, reason?: string): Promise<unknown> => {
+      const p = new RemoteSimController().connect({ url: URL_, code: 'X', WebSocketCtor: Ctor }).catch((e: unknown) => e);
+      const s = FakeSocket.all.at(-1)!;
+      s.open();
+      s.hangUp(code, reason);
+      return p;
+    };
+    const old = await outcome(4426, 'protocol 3');
+    expect(old).toBeInstanceOf(RemoteVersionError);
+    expect(old).not.toBeInstanceOf(RemoteAuthError);
+    expect(old).toMatchObject({ pageProtocol: 2, hostProtocol: 3 });
+    // a close that does not say it, or says something else, is nothing the page can word as a version
+    for (const reason of [undefined, '', 'protocol', 'protocol x', 'protocol 99999', 'protocol 3 and more', 'wrong code']) expect(((await outcome(4426, reason)) as Error).message, String(reason)).toBe('Could not reach the desktop.');
+    expect(await outcome(4400, 'protocol 3')).not.toBeInstanceOf(RemoteVersionError);
   });
 });
 
@@ -277,6 +325,21 @@ describe('after the welcome', () => {
     s.say({ size: 10 });
     s.frame({ type: 'ping', t: 1 } as never);
     expect(errors).toEqual([]);
+  });
+
+  it("a scenario the host will not take is an ordinary engine error with the host's sentence: init rejects with it, the link stays up and takes another scenario", async () => {
+    const { c, s, errors } = await connected();
+    const told: string[] = [];
+    c.onClosed((r) => told.push(r));
+    const ready = c.init(syntheticScenario({ extent: 1500 }));
+    s.frame({ type: 'error', message: TOO_BIG_MESSAGE });
+    await expect(ready).rejects.toThrow("This scenario is too big for the desktop's free memory.");
+    expect(errors).toEqual(["This scenario is too big for the desktop's free memory."]);
+    expect(told).toEqual([]);
+    expect(s.closedWith).toBeNull();
+    const before = s.sent.length;
+    void c.init(syntheticScenario({ extent: 1500 })).catch(() => undefined); // a smaller one, on the same link
+    expect(s.sent.length).toBe(before + 1);
   });
 
   it('dispose closes the socket with 1000, says nothing, and rejects what is waiting', async () => {

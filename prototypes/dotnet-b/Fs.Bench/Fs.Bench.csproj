@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fs.Kernel\Fs.Kernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- T1.4b: the case runner of Fs.Tests (no test framework in it) builds the level set from a recorded frame, for the benchmark and the thread curve -->
+    <Compile Include="..\Fs.Tests\FastCaseRunner.cs" Link="FastCaseRunner.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.16.0-preview.2" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

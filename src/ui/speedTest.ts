@@ -57,12 +57,21 @@ export function scoreSpeedTest(raw: SpeedRaw, at: number, ref = SPEED_TEST_REFER
 
 const aborted = (): Error => Object.assign(new Error('The speed test was stopped.'), { name: 'AbortError' });
 
+/**
+ * A copy of the worker's script held in memory (a `blob:` address), set by a page that a desktop host serves (ui/desktop.ts) once Desktop is the engine chosen,
+ * so the test can still be run when that host has gone. Without one the worker starts from the script's own address, as it always did.
+ */
+let keptWorkerUrl: string | null = null;
+export function setSpeedTestWorkerUrl(url: string | null): void {
+  keptWorkerUrl = url;
+}
+
 /** The test in a throwaway worker, or null where there is no Worker or it cannot be made. Terminated as soon as it answers, fails or is aborted. */
 function inWorker(signal?: AbortSignal): Promise<SpeedRaw> | null {
   if (typeof Worker === 'undefined') return null;
   let w: Worker;
   try {
-    w = new Worker(new URL('./speedTest.worker.ts', import.meta.url), { type: 'module' });
+    w = keptWorkerUrl ? new Worker(keptWorkerUrl, { type: 'module' }) : new Worker(new URL('./speedTest.worker.ts', import.meta.url), { type: 'module' });
   } catch {
     return null;
   }

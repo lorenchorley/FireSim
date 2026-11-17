@@ -1,0 +1,514 @@
+{
+  "stage": "1-kernel",
+  "when": "2026-11-12T06:05:20Z",
+  "machine": {
+    "label": "container",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "os": "Ubuntu 24.04.5 LTS",
+    "runtime": ".NET 11.0.0",
+    "loadAvgBefore": "1.08 1.20 0.75 1/230 5331",
+    "vectorDoubleCount": 4
+  },
+  "indicative": true,
+  "kernel": "PyrogenicPotential.solve (src/atmosphere/pyrogenic.ts)",
+  "representativeCase": "case1",
+  "runs": [
+    {
+      "name": "pyrogenic-solve ts [case0]",
+      "impl": "ts",
+      "threads": 1,
+      "case": "case0",
+      "n": 50,
+      "medianMs": 7.468609000000015,
+      "p95Ms": 7.785961000000043,
+      "minMs": 7.117771999999832,
+      "maxMs": 7.866422000000057,
+      "notes": "original src/atmosphere/pyrogenic.ts under Node v22.22.0 (V8 12.4.254.21-node.33); sim time 300 s, 69 source cells; 167 warm-up calls"
+    },
+    {
+      "name": "pyrogenic-solve ts [case1]",
+      "impl": "ts",
+      "threads": 1,
+      "case": "case1",
+      "n": 50,
+      "medianMs": 4.28473699999995,
+      "p95Ms": 4.678424000000177,
+      "minMs": 4.191951000000245,
+      "maxMs": 5.667524999999841,
+      "notes": "original src/atmosphere/pyrogenic.ts under Node v22.22.0 (V8 12.4.254.21-node.33); sim time 900 s, 191 source cells; 162 warm-up calls"
+    },
+    {
+      "name": "pyrogenic-solve ts [case2]",
+      "impl": "ts",
+      "threads": 1,
+      "case": "case2",
+      "n": 50,
+      "medianMs": 4.402527000000191,
+      "p95Ms": 6.735584000000017,
+      "minMs": 4.220276999999896,
+      "maxMs": 9.235845000000154,
+      "notes": "original src/atmosphere/pyrogenic.ts under Node v22.22.0 (V8 12.4.254.21-node.33); sim time 1500 s, 592 source cells; 215 warm-up calls"
+    },
+    {
+      "name": "pyrogenic-solve scalar [case0]",
+      "impl": "cs-scalar",
+      "threads": 1,
+      "case": "case0",
+      "n": 50,
+      "medianMs": 2.2256,
+      "p95Ms": 5.5293,
+      "minMs": 1.9801,
+      "maxMs": 6.3719,
+      "speedupVsTsMedian": 3.3557732746225803,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve vector [case0]",
+      "impl": "cs-vector",
+      "threads": 1,
+      "case": "case0",
+      "n": 50,
+      "medianMs": 1.0626,
+      "p95Ms": 1.708,
+      "minMs": 1.0261,
+      "maxMs": 3.2016,
+      "speedupVsTsMedian": 7.028617541878425,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x1 [case0]",
+      "impl": "cs-parallel",
+      "threads": 1,
+      "case": "case0",
+      "n": 50,
+      "medianMs": 1.0503,
+      "p95Ms": 1.2426,
+      "minMs": 1.0368,
+      "maxMs": 1.4369,
+      "speedupVsTsMedian": 7.110929258307165,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x2 [case0]",
+      "impl": "cs-parallel",
+      "threads": 2,
+      "case": "case0",
+      "n": 50,
+      "medianMs": 0.6763,
+      "p95Ms": 1.4731,
+      "minMs": 0.551,
+      "maxMs": 3.2317,
+      "speedupVsTsMedian": 11.043337276356668,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x4 [case0]",
+      "impl": "cs-parallel",
+      "threads": 4,
+      "case": "case0",
+      "n": 50,
+      "medianMs": 0.5836,
+      "p95Ms": 1.002,
+      "minMs": 0.5073,
+      "maxMs": 1.4529,
+      "speedupVsTsMedian": 12.797479437971239,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x8 [case0]",
+      "impl": "cs-parallel",
+      "threads": 8,
+      "case": "case0",
+      "n": 50,
+      "medianMs": 0.5689,
+      "p95Ms": 2.1288,
+      "minMs": 0.3143,
+      "maxMs": 2.5933,
+      "speedupVsTsMedian": 13.12815784847955,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve scalar [case1]",
+      "impl": "cs-scalar",
+      "threads": 1,
+      "case": "case1",
+      "n": 50,
+      "medianMs": 2.2714,
+      "p95Ms": 3.7954,
+      "minMs": 1.9847,
+      "maxMs": 5.6942,
+      "speedupVsTsMedian": 1.8863859293827376,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve vector [case1]",
+      "impl": "cs-vector",
+      "threads": 1,
+      "case": "case1",
+      "n": 50,
+      "medianMs": 1.0478,
+      "p95Ms": 1.2982,
+      "minMs": 1.0284,
+      "maxMs": 1.5568,
+      "speedupVsTsMedian": 4.0892698988356075,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x1 [case1]",
+      "impl": "cs-parallel",
+      "threads": 1,
+      "case": "case1",
+      "n": 50,
+      "medianMs": 1.0656,
+      "p95Ms": 1.2079,
+      "minMs": 1.0424,
+      "maxMs": 1.237,
+      "speedupVsTsMedian": 4.020961899399352,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x2 [case1]",
+      "impl": "cs-parallel",
+      "threads": 2,
+      "case": "case1",
+      "n": 50,
+      "medianMs": 0.5979,
+      "p95Ms": 0.7857,
+      "minMs": 0.5392,
+      "maxMs": 2.737,
+      "speedupVsTsMedian": 7.166310419802559,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x4 [case1]",
+      "impl": "cs-parallel",
+      "threads": 4,
+      "case": "case1",
+      "n": 50,
+      "medianMs": 0.5883,
+      "p95Ms": 1.7199,
+      "minMs": 0.3679,
+      "maxMs": 3.5544,
+      "speedupVsTsMedian": 7.283251742308261,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x8 [case1]",
+      "impl": "cs-parallel",
+      "threads": 8,
+      "case": "case1",
+      "n": 50,
+      "medianMs": 0.3949,
+      "p95Ms": 1.6422,
+      "minMs": 0.3204,
+      "maxMs": 7.3717,
+      "speedupVsTsMedian": 10.850182324639023,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve scalar [case2]",
+      "impl": "cs-scalar",
+      "threads": 1,
+      "case": "case2",
+      "n": 50,
+      "medianMs": 2.253,
+      "p95Ms": 2.363,
+      "minMs": 2.0384,
+      "maxMs": 4.5518,
+      "speedupVsTsMedian": 1.954073235685837,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve vector [case2]",
+      "impl": "cs-vector",
+      "threads": 1,
+      "case": "case2",
+      "n": 50,
+      "medianMs": 1.0599,
+      "p95Ms": 1.171,
+      "minMs": 1.0393,
+      "maxMs": 1.3874,
+      "speedupVsTsMedian": 4.153719218794405,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x1 [case2]",
+      "impl": "cs-parallel",
+      "threads": 1,
+      "case": "case2",
+      "n": 50,
+      "medianMs": 1.1218,
+      "p95Ms": 3.3883,
+      "minMs": 1.0569,
+      "maxMs": 6.2715,
+      "speedupVsTsMedian": 3.924520413621137,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x2 [case2]",
+      "impl": "cs-parallel",
+      "threads": 2,
+      "case": "case2",
+      "n": 50,
+      "medianMs": 0.7234,
+      "p95Ms": 2.442,
+      "minMs": 0.558,
+      "maxMs": 2.8655,
+      "speedupVsTsMedian": 6.085881946364654,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x4 [case2]",
+      "impl": "cs-parallel",
+      "threads": 4,
+      "case": "case2",
+      "n": 50,
+      "medianMs": 0.5923,
+      "p95Ms": 1.3643,
+      "minMs": 0.5335,
+      "maxMs": 1.4495,
+      "speedupVsTsMedian": 7.4329343238227095,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    },
+    {
+      "name": "pyrogenic-solve parallel x8 [case2]",
+      "impl": "cs-parallel",
+      "threads": 8,
+      "case": "case2",
+      "n": 50,
+      "medianMs": 0.5444,
+      "p95Ms": 0.8761,
+      "minMs": 0.4264,
+      "maxMs": 1.2047,
+      "speedupVsTsMedian": 8.086934239530109,
+      "notes": "C# net11.0 Release, 1 s warm-up (>= 30 calls) before timing"
+    }
+  ],
+  "correctness": [
+    {
+      "Case": "case0",
+      "SimTimeS": 300,
+      "PsiMaxAbs": 3.410605131648481e-13,
+      "PsiMaxRel": 2.749779021317644e-16,
+      "PsiNotBitEqual": 2189,
+      "PsiLen": 10000,
+      "UpMaxAbs": 0,
+      "VpMaxAbs": 0,
+      "UpNotBitEqual": 0,
+      "VpNotBitEqual": 0,
+      "UpLen": 40000,
+      "UpMaxUlp": 0,
+      "VpMaxUlp": 0,
+      "PsiScale": 1240.3197148599168,
+      "UpScale": 1.9977072477340698,
+      "VectorBitEqualScalar": true,
+      "ParallelBitEqualScalar": {
+        "1": true,
+        "2": true,
+        "4": true,
+        "8": true
+      },
+      "ParallelRepeats": 5
+    },
+    {
+      "Case": "case1",
+      "SimTimeS": 900,
+      "PsiMaxAbs": 4.547473508864641e-13,
+      "PsiMaxRel": 2.8899598437406303e-16,
+      "PsiNotBitEqual": 4844,
+      "PsiLen": 10000,
+      "UpMaxAbs": 0,
+      "VpMaxAbs": 0,
+      "UpNotBitEqual": 0,
+      "VpNotBitEqual": 0,
+      "UpLen": 40000,
+      "UpMaxUlp": 0,
+      "VpMaxUlp": 0,
+      "PsiScale": 1573.5421094912522,
+      "UpScale": 2.0089058876037598,
+      "VectorBitEqualScalar": true,
+      "ParallelBitEqualScalar": {
+        "1": true,
+        "2": true,
+        "4": true,
+        "8": true
+      },
+      "ParallelRepeats": 5
+    },
+    {
+      "Case": "case2",
+      "SimTimeS": 1500,
+      "PsiMaxAbs": 9.094947017729282e-13,
+      "PsiMaxRel": 2.2809466428178654e-16,
+      "PsiNotBitEqual": 5080,
+      "PsiLen": 10000,
+      "UpMaxAbs": 0,
+      "VpMaxAbs": 0,
+      "UpNotBitEqual": 0,
+      "VpNotBitEqual": 0,
+      "UpLen": 40000,
+      "UpMaxUlp": 0,
+      "VpMaxUlp": 0,
+      "PsiScale": 3987.356322589576,
+      "UpScale": 4.153900623321533,
+      "VectorBitEqualScalar": true,
+      "ParallelBitEqualScalar": {
+        "1": true,
+        "2": true,
+        "4": true,
+        "8": true
+      },
+      "ParallelRepeats": 5
+    }
+  ],
+  "speedups": {
+    "scalarVsTs": 1.8863859293827376,
+    "vectorVsTs": 4.0892698988356075,
+    "parallel1VsTs": 4.020961899399352,
+    "parallel2VsTs": 7.166310419802559,
+    "parallel4VsTs": 7.283251742308261,
+    "parallel8VsTs": 10.850182324639023
+  },
+  "gate": {
+    "bar": "all-core C# >= 1.5x TypeScript on desktop",
+    "measured": "7.28x (4 threads, median, case1)",
+    "result": "pass",
+    "why": "Kernel-only, container (4 shared vCPUs, load ~1 from other agents), indicative. The kernel is 8.7% of the fast-tier run (Amdahl: whole-run speed-up at most 1.08x at the measured kernel speed, 1.10x if the kernel cost nothing). The phone bar (>= 2.0x) was not measured."
+  },
+  "tsExtraProcessRuns": {
+    "note": "three further separate Node processes, 50 timed repeats each, same inputs, under the lock; the main run above had case0 at 7.47 ms (a one-off slower V8 outcome); case1 (the representative one) is stable",
+    "runs": [
+      [
+        {
+          "case": "case0",
+          "medianMs": 4.217117000000144,
+          "p95Ms": 5.514427000000069,
+          "minMs": 4.018976000000066,
+          "maxMs": 7.4909110000000965
+        },
+        {
+          "case": "case1",
+          "medianMs": 4.325044000000162,
+          "p95Ms": 6.466553000000204,
+          "minMs": 4.2156300000001465,
+          "maxMs": 8.042670000000271
+        },
+        {
+          "case": "case2",
+          "medianMs": 4.336970000000292,
+          "p95Ms": 6.143746999999621,
+          "minMs": 4.282169999999951,
+          "maxMs": 9.82162500000004
+        }
+      ],
+      [
+        {
+          "case": "case0",
+          "medianMs": 4.199331999999913,
+          "p95Ms": 6.466916999999967,
+          "minMs": 4.035155999999915,
+          "maxMs": 7.547706999999946
+        },
+        {
+          "case": "case1",
+          "medianMs": 4.289444000000003,
+          "p95Ms": 6.487536000000091,
+          "minMs": 4.1622010000000955,
+          "maxMs": 7.18478499999992
+        },
+        {
+          "case": "case2",
+          "medianMs": 4.400796999999784,
+          "p95Ms": 5.47052100000019,
+          "minMs": 4.305696000000353,
+          "maxMs": 6.643105000000105
+        }
+      ],
+      [
+        {
+          "case": "case0",
+          "medianMs": 4.178899000000001,
+          "p95Ms": 8.07562699999994,
+          "minMs": 4.0215220000000045,
+          "maxMs": 9.35608000000002
+        },
+        {
+          "case": "case1",
+          "medianMs": 4.482842999999775,
+          "p95Ms": 7.452855999999883,
+          "minMs": 4.1928939999997965,
+          "maxMs": 9.979440000000068
+        },
+        {
+          "case": "case2",
+          "medianMs": 4.5003569999998945,
+          "p95Ms": 9.825729000000138,
+          "minMs": 4.285890000000109,
+          "maxMs": 24.72245600000042
+        }
+      ]
+    ]
+  },
+  "profile": {
+    "scenario": "Katoomba 6 km, fast tier, seed 11, civil start 2025-12-20 12:00, 310 m line (-570,-450)->(-350,-230) at t=0, snapshot 60 s, Simulation run to 1800 s of fire (180 steps), 200x200 cells at 30 m",
+    "unprofiledAdvanceMs": 1737,
+    "profiledAdvanceMs": 1901,
+    "topSelfTime": [
+      {
+        "fn": "solve (atmosphere/pyrogenic.ts)",
+        "pctSelf": 7.1
+      },
+      {
+        "fn": "advance (embers/EmberModel.ts)",
+        "pctSelf": 7.1
+      },
+      {
+        "fn": "sampleBg (atmosphere/diagnosticWind.ts)",
+        "pctSelf": 5
+      },
+      {
+        "fn": "evaluate (fire/spread/levelSet.ts)",
+        "pctSelf": 4.2
+      },
+      {
+        "fn": "(garbage collector)",
+        "pctSelf": 4.1
+      },
+      {
+        "fn": "addFireHeat (atmosphere/diagnosticWind.ts)",
+        "pctSelf": 3.8
+      },
+      {
+        "fn": "reinit (fire/spread/levelSet.ts)",
+        "pctSelf": 3.4
+      },
+      {
+        "fn": "step (embers/EmberModel.ts)",
+        "pctSelf": 2.6
+      },
+      {
+        "fn": "computeCell (fire/spread/FireSpreadModel.ts)",
+        "pctSelf": 2.5
+      },
+      {
+        "fn": "compute (fire/spread/geometry.ts)",
+        "pctSelf": 2.5
+      }
+    ]
+  },
+  "amdahl": {
+    "kernelShareOfFastTierSelfTimePct": 8.7,
+    "kernelSpeedupParallel4": 7.28,
+    "wholeRunSpeedupIfKernelAtMeasuredSpeed": 1.081,
+    "wholeRunSpeedupIfKernelFree": 1.095,
+    "note": "kernel = solve + gradientToFire in pyrogenic.ts, 170 ms of 1962 ms sampled self time"
+  },
+  "notRun": [
+    "Phone benchmark (needs an Android app screen calling Fs.Bench KernelBench.RunForAppAsync; another agent owns the Android toolchain; the phone needs the owner)",
+    "TypeScript on the phone (the app WebView, same kernel loop, measured in the app) for the phone ratio",
+    "C# on the whole solver (only one kernel was ported)",
+    "Vector512/AVX-512 form (not portable to the phone)",
+    "standard-tier kernel (profiled only)"
+  ]
+}

@@ -253,6 +253,27 @@ describe('describeModel: live values follow the scenario and the engine', () => 
     expect(JSON.stringify(describeModel({ scenario: null, request: buildRequest(defaultSetup(), settings), settings }))).not.toMatch(/bundled LiDAR/);
   });
 
+  it('the planning text follows the engine: on a run the desktop computes it says the desktop, not this phone, and quotes no phone (0.9.0)', () => {
+    const planned = (onDesktop: boolean): ReturnType<typeof describeModel> => describeModel({ scenario: null, request: buildRequest(defaultSetup(), settings), settings, ...(onDesktop ? { onDesktop } : {}) });
+    const phone = row(planned(false), 'atmosphere');
+    const desk = row(planned(true), 'atmosphere');
+    expect(desk.dimensions).toMatch(/^Auto: decided when the run starts, from a short timing test on the desktop\. 3-D air flow unless it would take far too long/);
+    expect(desk.dimensions).not.toContain('this phone');
+    expect(desk.method).toContain('The desktop does that timing itself, on its own processor');
+    expect(desk.method).toContain('when you play faster than the desktop computes; the timeline says so.');
+    expect(desk.method).not.toMatch(/phone computes|On the one phone measured so far/);
+    expect(desk.method).toMatch(/keeps it unless the whole run is predicted to take longer than the time limit \(about \d+ s for 6 h of fire\)/);
+    // the headline of the card, and the Tier entry of the words
+    expect(planned(true).headline).toContain('unless a short timing test on the desktop, when the run starts, finds it far too slow');
+    expect(planned(false).headline).toContain('unless a short timing test on this phone, when the run starts, finds it far too slow');
+    expect(GLOSSARY.find((g) => g.term === 'Tier')!.gloss).toContain('on the device that computes the run (this phone, or the desktop)');
+    // this device: not a word of it changes
+    expect(phone.dimensions).toMatch(/from a short timing test on this phone\./);
+    expect(phone.method).toContain('On the one phone measured so far the 3-D step took about 41 ms');
+    expect(phone.method).toContain('when you play faster than this phone computes; the timeline says so.');
+    expectClean(planned(true));
+  });
+
   it('before a run the Auto atmosphere row says how Auto decides, quotes the one phone measured so far, and does not say most phones are too slow', () => {
     const atm = row(describeModel({ scenario: null, request: buildRequest(defaultSetup(), settings), settings }), 'atmosphere');
     expect(atm.dimensions).toMatch(/^Auto: decided when the run starts, from a short timing test on this phone\. 3-D air flow unless it would take far too long/);

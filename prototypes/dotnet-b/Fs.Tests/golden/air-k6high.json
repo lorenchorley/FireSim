@@ -1,0 +1,950 @@
+{
+ "kernel": "T1.4a air kernels: EllipticSolver.gradient/divergence/relax, dynamics.advect on the real state of the standard tier",
+ "endianness": "little",
+ "scenario": "katoomba3-standard",
+ "extentM": 6000,
+ "tier": "high",
+ "tierOnly": true,
+ "seed": 13,
+ "simTimeS": 900,
+ "node": "v22.22.0",
+ "grid": {
+  "nx": 60,
+  "ny": 60,
+  "nz": 24,
+  "plane": 3600,
+  "n": 86400,
+  "nU": 87840,
+  "nV": 87840,
+  "nW": 90000,
+  "dx": 100,
+  "Hp": 3000
+ },
+ "topActive": false,
+ "dt": 9.5,
+ "levels": [
+  {
+   "nx": 60,
+   "ny": 60,
+   "nz": 24
+  },
+  {
+   "nx": 30,
+   "ny": 30,
+   "nz": 24
+  },
+  {
+   "nx": 15,
+   "ny": 15,
+   "nz": 24
+  },
+  {
+   "nx": 8,
+   "ny": 8,
+   "nz": 24
+  }
+ ],
+ "relaxCalls": [
+  {
+   "level": 0,
+   "sweeps": 2,
+   "reverse": false
+  },
+  {
+   "level": 1,
+   "sweeps": 2,
+   "reverse": false
+  },
+  {
+   "level": 2,
+   "sweeps": 2,
+   "reverse": false
+  },
+  {
+   "level": 3,
+   "sweeps": 10,
+   "reverse": false
+  },
+  {
+   "level": 3,
+   "sweeps": 10,
+   "reverse": true
+  },
+  {
+   "level": 2,
+   "sweeps": 2,
+   "reverse": false
+  },
+  {
+   "level": 1,
+   "sweeps": 2,
+   "reverse": false
+  },
+  {
+   "level": 0,
+   "sweeps": 2,
+   "reverse": false
+  }
+ ],
+ "smokeActive": true,
+ "cases": [
+  {
+   "id": "gradient/real",
+   "kernel": "gradient",
+   "params": {
+    "maskMode": "real",
+    "topActive": false
+   },
+   "inputs": [
+    {
+     "role": "phi",
+     "array": "field.phi"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "gu",
+     "hash": "ec65c1265d3faf7b0a9b933c60d4d6a0"
+    },
+    {
+     "role": "gv",
+     "hash": "103b7d34c8b550da8c69c73023735dc5"
+    },
+    {
+     "role": "gw",
+     "hash": "d6814e796e0076ad05a183b545cb5c90"
+    }
+   ],
+   "inputHashes": {
+    "phi": "e38c0cacf2bb884d3ca29129c2ba7528"
+   }
+  },
+  {
+   "id": "gradient/recipe-masks-top-active",
+   "kernel": "gradient",
+   "params": {
+    "maskMode": "recipe",
+    "topActive": true
+   },
+   "inputs": [
+    {
+     "role": "phi",
+     "array": "field.phi"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "gu",
+     "hash": "96d54e896d5c40700ab64d1447b59bca"
+    },
+    {
+     "role": "gv",
+     "hash": "b67e71d6eb1359d381afb3f29a085d0e"
+    },
+    {
+     "role": "gw",
+     "hash": "90cf4793e3c042ab06f32d3a7296070c"
+    }
+   ],
+   "inputHashes": {
+    "phi": "e38c0cacf2bb884d3ca29129c2ba7528"
+   }
+  },
+  {
+   "id": "gradient/edge-nan-negzero",
+   "kernel": "gradient",
+   "params": {
+    "maskMode": "real",
+    "topActive": false
+   },
+   "inputs": [
+    {
+     "role": "phi",
+     "array": "field.phi",
+     "poison": 3
+    }
+   ],
+   "outputs": [
+    {
+     "role": "gu",
+     "hash": "a1a760ce94af6be7c9ba584400098449"
+    },
+    {
+     "role": "gv",
+     "hash": "6b6699d46a5180359550e5d9650513e3"
+    },
+    {
+     "role": "gw",
+     "hash": "e55cf5ea0de316156d86694e1409578f"
+    }
+   ],
+   "inputHashes": {
+    "phi": "5cdb5c15a8d6e86e212d23a0d2a897ef"
+   }
+  },
+  {
+   "id": "divergence/f32-real",
+   "kernel": "divergence",
+   "params": {
+    "scaleU": 1,
+    "scaleW": 1
+   },
+   "inputs": [
+    {
+     "role": "u",
+     "array": "field.u"
+    },
+    {
+     "role": "v",
+     "array": "field.v"
+    },
+    {
+     "role": "w",
+     "array": "field.w"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "out",
+     "hash": "269bbf81d29d55c4b2fd4ab76d62b4f2"
+    }
+   ],
+   "inputHashes": {
+    "u": "f465c951eb4da524bff3c6cf0518ae16",
+    "v": "a62f17ff327be1dc561c1e16fb3a1e38",
+    "w": "7d64ecc0a4c9cf0d434a6447f08c7a35"
+   }
+  },
+  {
+   "id": "divergence/f64-flux",
+   "kernel": "divergence",
+   "params": {
+    "scaleU": 1,
+    "scaleW": 1
+   },
+   "inputs": [
+    {
+     "role": "u",
+     "array": "derived.gu"
+    },
+    {
+     "role": "v",
+     "array": "derived.gv"
+    },
+    {
+     "role": "w",
+     "array": "derived.gw"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "out",
+     "hash": "1c60f4cc8fcb8d385f6989ecf861c04b"
+    }
+   ],
+   "inputHashes": {
+    "u": "ec65c1265d3faf7b0a9b933c60d4d6a0",
+    "v": "103b7d34c8b550da8c69c73023735dc5",
+    "w": "d6814e796e0076ad05a183b545cb5c90"
+   }
+  },
+  {
+   "id": "divergence/f32-scaled",
+   "kernel": "divergence",
+   "params": {
+    "scaleU": 2.5,
+    "scaleW": 0.3125
+   },
+   "inputs": [
+    {
+     "role": "u",
+     "array": "field.u"
+    },
+    {
+     "role": "v",
+     "array": "field.v"
+    },
+    {
+     "role": "w",
+     "array": "field.w"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "out",
+     "hash": "653bece09072e656aadcb09b8afd5310"
+    }
+   ],
+   "inputHashes": {
+    "u": "f465c951eb4da524bff3c6cf0518ae16",
+    "v": "a62f17ff327be1dc561c1e16fb3a1e38",
+    "w": "7d64ecc0a4c9cf0d434a6447f08c7a35"
+   }
+  },
+  {
+   "id": "divergence/f32-edge-nan-negzero",
+   "kernel": "divergence",
+   "params": {
+    "scaleU": 1,
+    "scaleW": 1
+   },
+   "inputs": [
+    {
+     "role": "u",
+     "array": "field.u",
+     "poison": 1
+    },
+    {
+     "role": "v",
+     "array": "field.v",
+     "poison": 4
+    },
+    {
+     "role": "w",
+     "array": "field.w",
+     "poison": 6
+    }
+   ],
+   "outputs": [
+    {
+     "role": "out",
+     "hash": "ac34457ca13bf9dc6a55d4e4b627f8a1"
+    }
+   ],
+   "inputHashes": {
+    "u": "df0c5114cea257420fa1c8868b3db45e",
+    "v": "09c81bf5fd20b63c5e686b84b7f7238d",
+    "w": "06d6d07cc82a5cfc5549b8cd845bd49b"
+   }
+  },
+  {
+   "id": "divergence/f64-edge-nan-negzero",
+   "kernel": "divergence",
+   "params": {
+    "scaleU": 1,
+    "scaleW": 1
+   },
+   "inputs": [
+    {
+     "role": "u",
+     "array": "derived.gu",
+     "poison": 2
+    },
+    {
+     "role": "v",
+     "array": "derived.gv",
+     "poison": 5
+    },
+    {
+     "role": "w",
+     "array": "derived.gw",
+     "poison": 8
+    }
+   ],
+   "outputs": [
+    {
+     "role": "out",
+     "hash": "3d5a04ab3d42c2a9ee08fb3373d5eea6"
+    }
+   ],
+   "inputHashes": {
+    "u": "660ef07ac3d19cee15c269fbdb604523",
+    "v": "17fbb5b6fad90f2bb106725a8c4673e8",
+    "w": "e694e938e478ee242ed695f4c179376c"
+   }
+  },
+  {
+   "id": "advect/u",
+   "kernel": "advect",
+   "params": {
+    "nxF": 61,
+    "nyF": 60,
+    "nzF": 24,
+    "ox": 0.5,
+    "oy": 0,
+    "oz": 0,
+    "dual": false
+   },
+   "inputs": [
+    {
+     "role": "dx",
+     "array": "derived.Dx"
+    },
+    {
+     "role": "dy",
+     "array": "derived.Dy"
+    },
+    {
+     "role": "dz",
+     "array": "derived.Dz"
+    },
+    {
+     "role": "src",
+     "array": "field.u"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "dst",
+     "hash": "724f75fbd2d87cb0da92fd44fd840df6"
+    }
+   ],
+   "inputHashes": {
+    "dx": "2cad437a0d3ea4cecfe0273365003bdb",
+    "dy": "5d9f86f29e8b32a4e121bed0409b77ce",
+    "dz": "2240ed30dbe80ab6484b634bda21dd39",
+    "src": "f465c951eb4da524bff3c6cf0518ae16"
+   }
+  },
+  {
+   "id": "advect/v",
+   "kernel": "advect",
+   "params": {
+    "nxF": 60,
+    "nyF": 61,
+    "nzF": 24,
+    "ox": 0,
+    "oy": 0.5,
+    "oz": 0,
+    "dual": false
+   },
+   "inputs": [
+    {
+     "role": "dx",
+     "array": "derived.Dx"
+    },
+    {
+     "role": "dy",
+     "array": "derived.Dy"
+    },
+    {
+     "role": "dz",
+     "array": "derived.Dz"
+    },
+    {
+     "role": "src",
+     "array": "field.v"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "dst",
+     "hash": "3998a23c832983d2e48f9e8764dfbcb3"
+    }
+   ],
+   "inputHashes": {
+    "dx": "2cad437a0d3ea4cecfe0273365003bdb",
+    "dy": "5d9f86f29e8b32a4e121bed0409b77ce",
+    "dz": "2240ed30dbe80ab6484b634bda21dd39",
+    "src": "a62f17ff327be1dc561c1e16fb3a1e38"
+   }
+  },
+  {
+   "id": "advect/w",
+   "kernel": "advect",
+   "params": {
+    "nxF": 60,
+    "nyF": 60,
+    "nzF": 25,
+    "ox": 0,
+    "oy": 0,
+    "oz": 0.5,
+    "dual": false
+   },
+   "inputs": [
+    {
+     "role": "dx",
+     "array": "derived.Dx"
+    },
+    {
+     "role": "dy",
+     "array": "derived.Dy"
+    },
+    {
+     "role": "dz",
+     "array": "derived.Dz"
+    },
+    {
+     "role": "src",
+     "array": "field.w"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "dst",
+     "hash": "90f0a6f7c54ae7a91566fe129bfd2ba0"
+    }
+   ],
+   "inputHashes": {
+    "dx": "2cad437a0d3ea4cecfe0273365003bdb",
+    "dy": "5d9f86f29e8b32a4e121bed0409b77ce",
+    "dz": "2240ed30dbe80ab6484b634bda21dd39",
+    "src": "7d64ecc0a4c9cf0d434a6447f08c7a35"
+   }
+  },
+  {
+   "id": "advect/th-sm",
+   "kernel": "advect",
+   "params": {
+    "nxF": 60,
+    "nyF": 60,
+    "nzF": 24,
+    "ox": 0,
+    "oy": 0,
+    "oz": 0,
+    "dual": true
+   },
+   "inputs": [
+    {
+     "role": "dx",
+     "array": "derived.Dx"
+    },
+    {
+     "role": "dy",
+     "array": "derived.Dy"
+    },
+    {
+     "role": "dz",
+     "array": "derived.Dz"
+    },
+    {
+     "role": "src",
+     "array": "field.th"
+    },
+    {
+     "role": "src2",
+     "array": "field.sm"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "dst",
+     "hash": "46c3cf1e370b3ab7cb51f0281640ebc6"
+    },
+    {
+     "role": "dst2",
+     "hash": "99bfcf57a9c87fe8553fa7c9fa781ad2"
+    }
+   ],
+   "inputHashes": {
+    "dx": "2cad437a0d3ea4cecfe0273365003bdb",
+    "dy": "5d9f86f29e8b32a4e121bed0409b77ce",
+    "dz": "2240ed30dbe80ab6484b634bda21dd39",
+    "src": "fc0f8c7f87620c9c6f81f655d91bb1ff",
+    "src2": "89a62a04a0ed53b58d11ea83ec944635"
+   }
+  },
+  {
+   "id": "advect/u-edge-nan-negzero",
+   "kernel": "advect",
+   "params": {
+    "nxF": 61,
+    "nyF": 60,
+    "nzF": 24,
+    "ox": 0.5,
+    "oy": 0,
+    "oz": 0,
+    "dual": false
+   },
+   "inputs": [
+    {
+     "role": "dx",
+     "array": "derived.Dx",
+     "poison": 2
+    },
+    {
+     "role": "dy",
+     "array": "derived.Dy"
+    },
+    {
+     "role": "dz",
+     "array": "derived.Dz"
+    },
+    {
+     "role": "src",
+     "array": "field.u",
+     "poison": 9
+    }
+   ],
+   "outputs": [
+    {
+     "role": "dst",
+     "hash": "cf7fa4a9522ca875c8e40a1e8f5b2888"
+    }
+   ],
+   "inputHashes": {
+    "dx": "dd844bc55e839850c2f7e10effe98d30",
+    "dy": "5d9f86f29e8b32a4e121bed0409b77ce",
+    "dz": "2240ed30dbe80ab6484b634bda21dd39",
+    "src": "f5ea87c3e7543f116493313292d2acd1"
+   }
+  },
+  {
+   "id": "advect/th-edge-nan-negzero",
+   "kernel": "advect",
+   "params": {
+    "nxF": 60,
+    "nyF": 60,
+    "nzF": 24,
+    "ox": 0,
+    "oy": 0,
+    "oz": 0,
+    "dual": false
+   },
+   "inputs": [
+    {
+     "role": "dx",
+     "array": "derived.Dx",
+     "poison": 5
+    },
+    {
+     "role": "dy",
+     "array": "derived.Dy"
+    },
+    {
+     "role": "dz",
+     "array": "derived.Dz"
+    },
+    {
+     "role": "src",
+     "array": "field.th",
+     "poison": 11
+    }
+   ],
+   "outputs": [
+    {
+     "role": "dst",
+     "hash": "27bdec1cf6a919efd565bfac374ef0e2"
+    }
+   ],
+   "inputHashes": {
+    "dx": "abf673045c7c5e9754e6330012d530f5",
+    "dy": "5d9f86f29e8b32a4e121bed0409b77ce",
+    "dz": "2240ed30dbe80ab6484b634bda21dd39",
+    "src": "4f635fc6404226ce9d16bb9931487ee4"
+   }
+  },
+  {
+   "id": "relax/call0-L0x2",
+   "kernel": "relax",
+   "params": {
+    "level": 0,
+    "sweeps": 2,
+    "reverse": false
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call0.b"
+    },
+    {
+     "role": "x",
+     "array": "call0.x"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "5eaad24c82f2c0628f987e7e6176946f"
+    }
+   ],
+   "inputHashes": {
+    "b": "8797543d8dd217f00dab6e9e45c2e3c7",
+    "x": "1ce01a290bb5d79f279d24914c9537cc"
+   }
+  },
+  {
+   "id": "relax/call1-L1x2",
+   "kernel": "relax",
+   "params": {
+    "level": 1,
+    "sweeps": 2,
+    "reverse": false
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call1.b"
+    },
+    {
+     "role": "x",
+     "array": "call1.x"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "3d32a62904867d448b9a36adf532c19b"
+    }
+   ],
+   "inputHashes": {
+    "b": "e0dce2705149cb96a66a38facba39582",
+    "x": "c15a958bf2806ac93920a2a2b014d7fb"
+   }
+  },
+  {
+   "id": "relax/call2-L2x2",
+   "kernel": "relax",
+   "params": {
+    "level": 2,
+    "sweeps": 2,
+    "reverse": false
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call2.b"
+    },
+    {
+     "role": "x",
+     "array": "call2.x"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "ba78405ec7a6cff9686cfbc264de603f"
+    }
+   ],
+   "inputHashes": {
+    "b": "75abbc6d51b3dcc444ef692272e08438",
+    "x": "47ed6857115d8bab2ffd4af6952f5530"
+   }
+  },
+  {
+   "id": "relax/call3-L3x10",
+   "kernel": "relax",
+   "params": {
+    "level": 3,
+    "sweeps": 10,
+    "reverse": false
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call3.b"
+    },
+    {
+     "role": "x",
+     "array": "call3.x"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "fd9fbe2c7a918c5c45ff9ba29305b75d"
+    }
+   ],
+   "inputHashes": {
+    "b": "e72957628d945373df61fc0aaafff2b2",
+    "x": "fd9243e1ba57263ed469c3bdbd7ade6e"
+   }
+  },
+  {
+   "id": "relax/call4-L3x10r",
+   "kernel": "relax",
+   "params": {
+    "level": 3,
+    "sweeps": 10,
+    "reverse": true
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call4.b"
+    },
+    {
+     "role": "x",
+     "array": "call4.x"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "c1eff20e336ad000f32b8c56a549cf48"
+    }
+   ],
+   "inputHashes": {
+    "b": "e72957628d945373df61fc0aaafff2b2",
+    "x": "fd9fbe2c7a918c5c45ff9ba29305b75d"
+   }
+  },
+  {
+   "id": "relax/call5-L2x2",
+   "kernel": "relax",
+   "params": {
+    "level": 2,
+    "sweeps": 2,
+    "reverse": false
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call5.b"
+    },
+    {
+     "role": "x",
+     "array": "call5.x"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "322ffc9afa92834c82fe9e1587fd00be"
+    }
+   ],
+   "inputHashes": {
+    "b": "75abbc6d51b3dcc444ef692272e08438",
+    "x": "4f9e1a2d26bef40958e31efe4a93061e"
+   }
+  },
+  {
+   "id": "relax/call6-L1x2",
+   "kernel": "relax",
+   "params": {
+    "level": 1,
+    "sweeps": 2,
+    "reverse": false
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call6.b"
+    },
+    {
+     "role": "x",
+     "array": "call6.x"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "1a21d83f625c49b6da9e103923893f20"
+    }
+   ],
+   "inputHashes": {
+    "b": "e0dce2705149cb96a66a38facba39582",
+    "x": "1df780a988a1ae8e67d6a5b9cf7fee5b"
+   }
+  },
+  {
+   "id": "relax/call7-L0x2",
+   "kernel": "relax",
+   "params": {
+    "level": 0,
+    "sweeps": 2,
+    "reverse": false
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call7.b"
+    },
+    {
+     "role": "x",
+     "array": "call7.x"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "94cbb41d6d968f3ad1aff893afe03b47"
+    }
+   ],
+   "inputHashes": {
+    "b": "8797543d8dd217f00dab6e9e45c2e3c7",
+    "x": "45d5f40f427352025e8f2dcd90744a98"
+   }
+  },
+  {
+   "id": "relax/L0-sweeps1",
+   "kernel": "relax",
+   "params": {
+    "level": 0,
+    "sweeps": 1,
+    "reverse": false
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call0.b"
+    },
+    {
+     "role": "x",
+     "array": "call0.x"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "037f0f6b8ce4a9ce5e510543be176026"
+    }
+   ],
+   "inputHashes": {
+    "b": "8797543d8dd217f00dab6e9e45c2e3c7",
+    "x": "1ce01a290bb5d79f279d24914c9537cc"
+   }
+  },
+  {
+   "id": "relax/L0-sweeps3-reverse-warm",
+   "kernel": "relax",
+   "params": {
+    "level": 0,
+    "sweeps": 3,
+    "reverse": true
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call0.b"
+    },
+    {
+     "role": "x",
+     "array": "call7.x"
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "53b090353ff08e44870d9e3034476bc9"
+    }
+   ],
+   "inputHashes": {
+    "b": "8797543d8dd217f00dab6e9e45c2e3c7",
+    "x": "45d5f40f427352025e8f2dcd90744a98"
+   }
+  },
+  {
+   "id": "relax/L0-edge-nan-negzero",
+   "kernel": "relax",
+   "params": {
+    "level": 0,
+    "sweeps": 2,
+    "reverse": false
+   },
+   "inputs": [
+    {
+     "role": "b",
+     "array": "call0.b",
+     "poison": 3
+    },
+    {
+     "role": "x",
+     "array": "call0.x",
+     "poison": 12
+    }
+   ],
+   "outputs": [
+    {
+     "role": "x",
+     "hash": "c9f9a41bb93ea9a57d3295c1673d34d5"
+    }
+   ],
+   "inputHashes": {
+    "b": "262b216d799f098f0340edc637165b40",
+    "x": "abe5395f985f105468feee23536ee037"
+   }
+  }
+ ],
+ "nArrays": 95
+}

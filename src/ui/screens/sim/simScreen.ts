@@ -16,6 +16,7 @@ import { layerForOverlay, SCENE_LAYER_KEYS, sceneLayerPatch, type SceneLayerKey 
 import { h, listen, setChildren, svg, text, vibrate } from '../../dom';
 import { icon, type IconName } from '../../icons';
 import { thinPath, type Pt } from '../../brushGeometry';
+import { levelOf } from '../../desktopDetailChoice';
 import { desktopSlot } from '../../desktopSlot';
 import { presetById } from '../../fuelPresets';
 import { fuelWithEdits } from '../../fuelDisplay';
@@ -104,6 +105,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const { scenario, services } = o;
   const tz = scenario.weather.timezone || 'Australia/Sydney';
   const unsubs: (() => void)[] = [];
+  // A run made with a finer Desktop detail (0.9.0) loads its own small chunk: its history budget and its label. A standard run loads nothing and is built as in 0.8.0.
+  const detail = levelOf(scenario.options) ? await import('../../desktopDetailRun') : null;
 
   // ───────────── DOM skeleton ─────────────
   const sceneHost = h('div', { class: 'scene-host', dataset: { testid: 'scene' } });
@@ -128,7 +131,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   view.setStartTime?.(scenario.startTime);
   view.setLayers(layers.get());
   if (o.user) view.setUserLocation(o.user.x, o.user.y, o.user.heading);
-  const session = new SimSession(scenario, controller, view);
+  const session = new SimSession(scenario, controller, view, detail ? detail.sessionOptions(scenario) : {});
   // The "Recent events" of the debug statistics (slow-run episodes, engine events, background / foreground): a small chunk of its own.
   let stopEvents = (): void => undefined;
   unsubs.push(() => stopEvents());
@@ -328,7 +331,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   root.append(topBar.el, ...(simNotice ? [simNotice] : []), errorChip, fabColumn, toolsMenu.el, mapLegend.el, windDetail.button, credit, panelHost, sheet.el, scrubber.el);
   // A run that computes on the desktop (the controller above is its link's): a lazy chunk labels it, puts the link's sentence in the chip and adds "Continue on this device".
   const desktop = desktopSlot.get();
-  if (desktop.run && desktop.host) unsubs.push(desktop.host.decorate({ root, chip: errorChip, notice: simNotice, session, makeController: () => services.createLocalController(), announce: o.announce }));
+  if (desktop.run && desktop.host) unsubs.push(desktop.host.decorate({ root, chip: errorChip, notice: simNotice, session, makeController: () => services.createLocalController(), announce: o.announce, exit: o.onExit, ...(detail ? { continueRefusal: () => detail.continueRefusal(scenario) } : {}) }));
+  const stopLabel = detail?.mountLabel(root, scenario); // "Finer grid, results differ, not validated", under the engine's label
+  if (stopLabel) unsubs.push(stopLabel);
   unsubs.push(() => mapLegend.destroy(), () => windDetail.destroy(), () => toolsMenu.destroy(), () => viewMenu.destroy());
 
   // ───────────── visible map area ─────────────

@@ -1,0 +1,26 @@
+# Analyzer severities for the solver projects (plan T0.4). Only a solver project runs the two analyzers (Directory.Build.props lists them,
+# Fs.Analyzers/Solver.props adds them), so the first section changes nothing for Fs.Bench, Fs.Host, Fs.Transport, Fs.TestApp, Fs.Tests and the rest.
+root = true
+
+[*.cs]
+# a banned API (Fs.Analyzers BannedSymbols.txt, rule RS0030) and a float-to-integer cast (FS0001) break the build
+dotnet_diagnostic.RS0030.severity = error
+dotnet_diagnostic.FS0001.severity = error
+
+# The only exempt solver files, by file name, anywhere in a solver project: FsMath.cs is where the maths functions are implemented and FsConv.cs where
+# the JavaScript conversions are implemented (plan 10.4). Later tasks create them in Fs.Kernel/ and need no change here.
+[FsMath.cs]
+dotnet_diagnostic.RS0030.severity = none
+dotnet_diagnostic.FS0001.severity = none
+
+[FsConv.cs]
+dotnet_diagnostic.RS0030.severity = none
+dotnet_diagnostic.FS0001.severity = none
+
+# T1.3: third-party source vendored unchanged (CoreMathSharp 1.0.0, MIT, a C# port of CORE-MATH; its README, LICENSE and the pinned commit are in
+# Fs.Kernel/ThirdParty/CoreMathSharp/VENDORED.md). It is not ours to edit, it uses raw double-to-integer casts on values it has already rounded, and
+# Math.BitIncrement/BitDecrement inside Polyfill, which are exact operations. FsMath.cs (the only caller) is itself exempt. FsMath's tests compare it
+# bit for bit with correctly rounded references on the machine and in WebAssembly, which is what stands in for the analyzers here.
+[Fs.Kernel/ThirdParty/**.cs]
+dotnet_diagnostic.RS0030.severity = none
+dotnet_diagnostic.FS0001.severity = none

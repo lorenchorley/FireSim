@@ -10,6 +10,8 @@
 import { ProtocolController, withoutContext } from '../client';
 import type { FromWorker, ToWorker } from '../protocol';
 import { decodeMessage, encodeMessage, type WireControl } from './codec';
+import type { RemoteHostInfo } from './detect';
+import { CLOSE, LINK_PROTOCOL } from './wire';
 
 /** The host did not accept the code: `reason` says whether it was wrong or the address has been refused for a minute. */
 export class RemoteAuthError extends Error {
@@ -22,27 +24,35 @@ export class RemoteAuthError extends Error {
   }
 }
 
+/** The page and the host speak different versions of the link (2 here): the page says "update the app or the host". */
+export class RemoteVersionError extends Error {
+  constructor(
+    /** The version this page speaks. */
+    readonly pageProtocol: number,
+    /** The version the host speaks. */
+    readonly hostProtocol: number,
+  ) {
+    super(`The app and the desktop host do not speak the same version of the link (the app ${pageProtocol}, the host ${hostProtocol}). Update the app or the host.`);
+    this.name = 'RemoteVersionError';
+  }
+}
+
 /** The part of the WebSocket interface the controller uses (the browser's, Node's global one, or `ws`). */
 export interface SocketLike {
   binaryType: string;
   readonly readyState: number;
   onopen: ((ev: unknown) => void) | null;
   onmessage: ((ev: { data: unknown }) => void) | null;
-  onclose: ((ev: { code: number }) => void) | null;
+  onclose: ((ev: { code: number; reason?: string }) => void) | null;
   onerror: ((ev: unknown) => void) | null;
   send(data: string | ArrayBufferView): void;
   close(code?: number, reason?: string): void;
 }
 
-export const PROTOCOL = 1;
+export const PROTOCOL = LINK_PROTOCOL;
 const OPEN = 1;
 const WELCOME_TIMEOUT_MS = 10_000;
 const PING_EVERY_MS = 5_000;
-/** The link's close codes of the host (desktop/README.md). */
-const CLOSE_WRONG_CODE = 4401;
-const CLOSE_RATE_LIMITED = 4429;
-const CLOSE_NO_SESSION = 4503;
-const CLOSE_HOST_FAILED = 1011;
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -53,12 +63,18 @@ export class RemoteSimController extends ProtocolController {
   private erroredOnce = false;
   private lastError: string | null = null;
   private sessionId: string | null = null;
+  private hostInfo: RemoteHostInfo | null = null;
   private closedReason: string | null = null;
   private readonly closeListeners = new Set<(reason: string) => void>();
 
   /** The host's id of this session (after `connect()`). */
   get session(): string | null {
     return this.sessionId;
+  }
+
+  /** What the host said of itself in its welcome (name, cores, Node version, sessions), after `connect()`. */
+  get info(): RemoteHostInfo | null {
+    return this.hostInfo;
   }
 
   /** The last measured round trip of the link (ms), or null before the first answer. */
@@ -83,7 +99,10 @@ export class RemoteSimController extends ProtocolController {
     return () => void this.closeListeners.delete(cb);
   }
 
-  /** Open the socket, say hello with the pairing `code`, wait for the welcome (10 s). Rejects with {@link RemoteAuthError} when the code is refused. */
+  /**
+   * Open the socket, say hello with the pairing `code`, wait for the welcome (10 s). Rejects with {@link RemoteAuthError} when the
+   * code is refused and with {@link RemoteVersionError} when the host speaks another version of the link.
+   */
   connect(o: { url: string; code: string; WebSocketCtor?: new (url: string) => SocketLike }): Promise<void> {
     const Ctor = o.WebSocketCtor ?? (typeof WebSocket !== 'undefined' ? (WebSocket as unknown as new (url: string) => SocketLike) : undefined);
     if (!Ctor) return Promise.reject(new Error('This browser cannot open a WebSocket.'));
@@ -117,14 +136,16 @@ export class RemoteSimController extends ProtocolController {
       ws.onclose = (ev): void => {
         if (!settled) {
           this.socket = null;
-          settle(() => reject(refusal(ev.code)));
+          settle(() => reject(refusal(ev.code, ev.reason)));
         } else this.linkClosed(ev.code);
       };
       ws.onmessage = (ev): void => {
         if (!settled) {
           const welcome = typeof ev.data === 'string' ? parseWelcome(ev.data) : null;
           if (!welcome) return refuse(new Error('The desktop sent something unexpected.'));
-          this.sessionId = welcome;
+          if ('version' in welcome) return refuse(new RemoteVersionError(PROTOCOL, welcome.version));
+          this.sessionId = welcome.session;
+          this.hostInfo = welcome.info;
           settle(resolve);
           this.startPing();
           return;
@@ -170,7 +191,7 @@ export class RemoteSimController extends ProtocolController {
   private linkClosed(code: number): void {
     this.socket = null;
     // The host reports why a session failed in an 'error' message just before it closes with 1011: that is the one error.
-    if (code === CLOSE_HOST_FAILED && this.erroredOnce) this.end(this.lastError ?? 'The desktop connection closed.', false);
+    if (code === CLOSE.failed && this.erroredOnce) this.end(this.lastError ?? 'The desktop connection closed.', false);
     else this.fail('The desktop connection closed.');
   }
 
@@ -226,18 +247,26 @@ export class RemoteSimController extends ProtocolController {
   }
 }
 
-function parseWelcome(text: string): string | null {
+/** The welcome of this version, or the number of another version that says it is a welcome, or null when it is not one. */
+function parseWelcome(text: string): { session: string; info: RemoteHostInfo } | { version: number } | null {
   try {
-    const v = JSON.parse(text) as { type?: unknown; protocol?: unknown; session?: unknown };
-    return v.type === 'welcome' && v.protocol === PROTOCOL && typeof v.session === 'string' ? v.session : null;
+    const v = JSON.parse(text) as Record<string, unknown> | null;
+    if (!v || typeof v !== 'object' || v.type !== 'welcome') return null;
+    if (typeof v.protocol === 'number' && v.protocol !== PROTOCOL) return { version: v.protocol };
+    const count = (x: unknown): x is number => Number.isInteger(x) && (x as number) >= 0;
+    if (v.protocol !== PROTOCOL || typeof v.session !== 'string' || typeof v.name !== 'string' || typeof v.node !== 'string' || !count(v.cores) || !count(v.sessions) || !count(v.maxSessions)) return null;
+    return { session: v.session, info: { app: 'firesim-desktop-host', protocol: PROTOCOL, name: v.name.slice(0, 64), cores: v.cores, node: v.node.slice(0, 32), sessions: v.sessions, maxSessions: v.maxSessions } };
   } catch {
     return null;
   }
 }
 
-function refusal(code: number): Error {
-  if (code === CLOSE_WRONG_CODE) return new RemoteAuthError('That code was not right.', 'wrong-code');
-  if (code === CLOSE_RATE_LIMITED) return new RemoteAuthError('Too many wrong codes from this device. Try again in a minute.', 'rate-limited');
-  if (code === CLOSE_NO_SESSION) return new Error('The desktop has no free session.');
+function refusal(code: number, reason?: string): Error {
+  if (code === CLOSE.wrongCode) return new RemoteAuthError('That code was not right.', 'wrong-code');
+  if (code === CLOSE.rateLimited) return new RemoteAuthError('Too many wrong codes from this device. Try again in a minute.', 'rate-limited');
+  if (code === CLOSE.noSession) return new Error('The desktop has no free session.');
+  // The host that refused the hello for its version says its own in the reason ("protocol 3").
+  const host = code === CLOSE.badProtocol ? Number(/^protocol (\d{1,4})$/.exec(reason ?? '')?.[1]) : NaN;
+  if (Number.isInteger(host)) return new RemoteVersionError(PROTOCOL, host);
   return new Error('Could not reach the desktop.');
 }

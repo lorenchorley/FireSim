@@ -1,10 +1,11 @@
 /**
- * What the page sees of the host through connectRemote (lane J2's interface): the one request for the host's info (a given `info`
- * means no request), and `onClosed`, told once when the link ends for any reason of its own. Against the real host (an engine that
- * runs nothing: the simulation is in engine.test.ts) over a real WebSocket, the one Node ships.
+ * What the page sees of the host through connectRemote (the page's interface): no request before the socket (the welcome says what the
+ * host is), a version of the link that is not this one, and `onClosed`, told once when the link ends for any reason of its own.
+ * Against the real host (an engine that runs nothing: the simulation is in engine.test.ts) over a real WebSocket, the one Node ships.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { connectRemote, type RemoteConnection } from '../src/sim/remote';
+import { WebSocket as WsSocket, WebSocketServer } from 'ws';
+import { connectRemote, RemoteVersionError, type RemoteConnection } from '../src/sim/remote';
 import { detectHost } from '../src/sim/remote/detect';
 import { encodeMessage } from '../src/sim/remote/codec';
 import { startHost, type HostHandle, type HostOptions } from './server';
@@ -36,33 +37,76 @@ async function connect(base: string): Promise<RemoteConnection> {
 /** The requests that asked for the host's info, by whoever made them in this process. */
 const infoRequests = (spy: ReturnType<typeof vi.spyOn>): number => spy.mock.calls.filter((c: unknown[]) => String(c[0]).endsWith('/__firesim/host')).length;
 
-describe('connectRemote and the host info', () => {
-  it('makes no request for it when it is given (the page has it from detectHost), and the connection carries that very info', async () => {
+describe('connectRemote and the host info (protocol 2)', () => {
+  it('asks the host nothing before the socket: the welcome carries what the host is, with or without a probe', async () => {
     const { base } = await host();
-    const info = await detectHost({ base });
-    expect(info).not.toBeNull();
+    const probe = await detectHost({ base });
+    expect(probe).toEqual({ app: 'firesim-desktop-host', protocol: 2, requiresCode: true });
     const spy = vi.spyOn(globalThis, 'fetch');
-    const c = await connectRemote({ base, code: CODE, info: info! });
-    open.push(c);
-    expect(infoRequests(spy)).toBe(0);
+    const a = await connectRemote({ base, code: CODE, probe: probe! });
+    const b = await connect(base);
+    open.push(a);
     expect(spy).not.toHaveBeenCalled();
-    expect(c.info).toBe(info);
+    for (const c of [a, b]) expect(c.info).toMatchObject({ app: 'firesim-desktop-host', protocol: 2, name: 'Test desk', maxSessions: 4, node: process.versions.node });
+    expect(a.info.sessions).toBe(1);
+    expect(b.info.sessions).toBe(2);
   });
 
-  it('asks once when it is not given, as before', async () => {
+  it('a page that detects and then connects asks /__firesim/host once in all', async () => {
     const { base } = await host();
     const spy = vi.spyOn(globalThis, 'fetch');
-    const c = await connect(base);
+    const probe = await detectHost({ base });
+    open.push(await connectRemote({ base, code: CODE, probe: probe! }));
     expect(infoRequests(spy)).toBe(1);
-    expect(c.info).toMatchObject({ app: 'firesim-desktop-host', name: 'Test desk', maxSessions: 4 });
   });
 
-  it('a page that detects and then connects with the info it has asks /__firesim/host once in all', async () => {
-    const { base } = await host();
-    const spy = vi.spyOn(globalThis, 'fetch');
-    const info = await detectHost({ base });
-    open.push(await connectRemote({ base, code: CODE, info: info! }));
-    expect(infoRequests(spy)).toBe(1);
+  it('refuses a probe of another version of the link before it opens a socket: a RemoteVersionError with both numbers', async () => {
+    const { h, base } = await host();
+    let sockets = 0;
+    class Counting extends WebSocket {
+      constructor(url: string | URL) {
+        super(url);
+        sockets++;
+      }
+    }
+    const err = await connectRemote({ base, code: CODE, probe: { app: 'firesim-desktop-host', protocol: 3, requiresCode: true }, WebSocketCtor: Counting }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RemoteVersionError);
+    expect(err).toMatchObject({ pageProtocol: 2, hostProtocol: 3 });
+    expect(sockets).toBe(0);
+    expect(h.sessions).toBe(0);
+  });
+
+  it('a host of protocol 1 (0.8.0) or 3 that is not asked first still gives a RemoteVersionError: from its welcome, or from its refusal of our hello', async () => {
+    // A stand-in for a host of another version, on a real socket: it welcomes in its own protocol, or refuses the hello with 4426.
+    const servers: WebSocketServer[] = [];
+    const standIn = async (behave: (ws: WsSocket) => void): Promise<string> => {
+      const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+      servers.push(wss);
+      await new Promise((r) => wss.once('listening', r));
+      wss.on('connection', (ws) => ws.once('message', () => behave(ws)));
+      return `http://127.0.0.1:${(wss.address() as { port: number }).port}`;
+    };
+    try {
+      const v1 = await standIn((ws) => ws.send(JSON.stringify({ type: 'welcome', session: 'a', protocol: 1 })));
+      const err1 = await connectRemote({ base: v1, code: CODE }).catch((e: unknown) => e);
+      expect(err1).toBeInstanceOf(RemoteVersionError);
+      expect(err1).toMatchObject({ pageProtocol: 2, hostProtocol: 1 });
+      const v3 = await standIn((ws) => ws.close(4426, 'protocol 3'));
+      const err3 = await connectRemote({ base: v3, code: CODE }).catch((e: unknown) => e);
+      expect(err3).toBeInstanceOf(RemoteVersionError);
+      expect(err3).toMatchObject({ pageProtocol: 2, hostProtocol: 3 });
+    } finally {
+      for (const w of servers) w.close();
+    }
+  });
+
+  it("a page of protocol 1 (an old app) is told 4426 with the host's version, and gets no session", async () => {
+    const { h, base } = await host();
+    const ws = new WsSocket(`${base.replace('http', 'ws')}/__firesim/engine`);
+    const closed = new Promise<{ code: number; reason: string }>((r) => ws.on('close', (code, reason) => r({ code, reason: reason.toString() })));
+    ws.on('open', () => ws.send(JSON.stringify({ type: 'hello', protocol: 1, code: CODE })));
+    expect(await closed).toEqual({ code: 4426, reason: 'protocol 2' });
+    expect(h.sessions).toBe(0);
   });
 });
 

@@ -2,7 +2,7 @@
  * Tunable constants of the orchestrator (spec docs/research/00-synthesis.md §3 cadences, §12.1 chunking, §12.4 ring,
  * §12.6 tiers and auto-tune). Every [H] value of sim/ lives here.
  */
-import type { QualityTier } from '../core/types';
+import type { DesktopDetailLevel, QualityTier } from '../core/types';
 
 export const SIM_PARAMS = Object.freeze({
   // ── cadences (simulated seconds, §3) ──
@@ -51,6 +51,13 @@ export const SIM_PARAMS = Object.freeze({
   autoTuneMinBudgetS: 60,
   // ── embers (§12.6 tier table) ──
   maxEmbersByTier: { fast: 2000, standard: 4000, high: 4000 } as Readonly<Record<QualityTier, number>>,
+  /**
+   * Desktop detail (0.9.0, D35): the ember cap of the finer levels, whatever the tier. 8,000 is the 15e row that was run (Katoomba, 4 h, 30 m, fast tier:
+   * 2,483 ha at the fast tier's 2,000, 2,032 ha at 8,000, 2,933 ha at 32,000; one realisation each, so the cap moves the area by tens of percent and there is
+   * no convergence to point to); it costs about a fifth more time than the fast tier's default (32,000 cost 8.5 s an hour against 5.3 s). Both levels use it
+   * because nothing measured says a finer cell wants more. [H]
+   */
+  desktopDetailMaxEmbers: { finer: 8000, finest: 8000 } as Readonly<Record<DesktopDetailLevel, number>>,
   /** Block size (fire cells) of the front-ROS raster used for the landing callback's rosLocal (exclusion zone) [H]. */
   frontRosBlock: 8,
   // ── stats (§12.3) ──

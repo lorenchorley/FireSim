@@ -81,7 +81,9 @@ export function resolveRequest(req: ScenarioRequest): ResolvedRequest {
     extent = P.demoExtentM;
     warnings.push(MESSAGES.extentClamped(P.demoExtentM / 1000, req.weather.kind === 'replay' ? 'replays use the bundled 9 km demo area' : 'offline: bundled 9 km demo area'));
   }
-  const cell = builtFireCell(extent, req.options?.fireCellSize, req.options?.tier);
+  const detail = req.options?.desktopDetail;
+  if (detail && extent > P.desktopDetailMaxExtentM) throw new RangeError(`The finer grids need an area of ${P.desktopDetailMaxExtentM / 1000} km or less.`);
+  const cell = builtFireCell(extent, req.options?.fireCellSize, req.options?.tier, detail);
   const fireCellSize = cell.cellM;
   if (cell.coarsened) warnings.push(MESSAGES.cellCoarsened(P.fireCellM));
   extent = Math.round(extent / fireCellSize) * fireCellSize;

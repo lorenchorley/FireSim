@@ -22,6 +22,13 @@ const config: CapacitorConfig = {
     // The UI uses CSS container queries, :has() and dvh with fallbacks, and the `inert` attribute: Chrome 105-108. An older
     // System WebView gets Capacitor's "update the WebView" message instead of a half-working screen.
     minWebViewVersion: 108,
+    // The desktop link (0.9.0, D36): the page at https://localhost opens a plain ws:// socket to a computer on the local network, and
+    // the WebView blocks that as mixed content unless its mode is MIXED_CONTENT_ALWAYS_ALLOW, which this switch sets (it is a
+    // boolean; the WebView's compatibility mode does not let a WebSocket through either, and any mode is for the whole WebView, not
+    // for one host). The matching cleartext rule is android/app/src/main/res/xml/network_security_config.xml. fetch() of http://
+    // does not need this switch: CapacitorHttp below sends it through the native stack. The scheme above must stay https (it is
+    // the page's origin and the key of every saved site and run).
+    allowMixedContent: true,
   },
   // WebView content debugging (chrome://inspect) follows Capacitor's default: on in debug builds, off in release builds.
   ios: {

@@ -11,7 +11,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { decodeMessage, encodeMessage } from '../src/sim/remote/codec';
-import { CLOSE, startHost, type HostHandle, type HostOptions } from './server';
+import { OpenTokens } from './openToken';
+import { CLOSE, DEFAULT_HIGH_WATER_BYTES, DEFAULT_LOW_WATER_BYTES, startHost, type HostHandle, type HostOptions } from './server';
 import { fakeEngines, hello, openClient, rawUpgrade, waitFor, welcomeOf, type FakeEngine, type TestClient } from './testHelpers';
 
 const CODE = 'ABCD2345';
@@ -76,7 +77,7 @@ describe('hello and welcome', () => {
   it('a right code is welcomed with a session id, and the session gets an engine', async () => {
     const { h, engines, logs } = await host();
     const { welcome } = await join_(h.port);
-    expect(welcome).toMatchObject({ type: 'welcome', protocol: 1 });
+    expect(welcome).toMatchObject({ type: 'welcome', protocol: 2 });
     expect(welcome!.session).toMatch(/^[0-9a-f]{12}$/);
     expect(h.sessions).toBe(1);
     expect(engines).toHaveLength(1);
@@ -105,14 +106,14 @@ describe('hello and welcome', () => {
       expect((await c.closed).code, code).toBe(4401);
     }
     const c = await connect(h.port);
-    c.ws.send(JSON.stringify({ type: 'hello', protocol: 1, code: 12345678 }));
+    c.ws.send(JSON.stringify({ type: 'hello', protocol: 2, code: 12345678 }));
     expect((await c.closed).code).toBe(4400);
     expect(engines).toHaveLength(0);
   });
 
   it('a first frame that is not a good hello is 4400: binary, not JSON, JSON of another shape, another protocol, no code', async () => {
     const { h, engines } = await host();
-    const frames: (string | Uint8Array)[] = [new Uint8Array([1, 2, 3]), 'hello', '[1,2]', '"hello"', 'null', JSON.stringify({ type: 'hello', protocol: 2, code: CODE }), JSON.stringify({ type: 'hello', protocol: 1 }), JSON.stringify({ type: 'welcome', protocol: 1, code: CODE }), encodeMessage({ type: 'hello', protocol: 1, code: CODE } as never)];
+    const frames: (string | Uint8Array)[] = [new Uint8Array([1, 2, 3]), 'hello', '[1,2]', '"hello"', 'null', JSON.stringify({ type: 'hello', protocol: '2', code: CODE }), JSON.stringify({ type: 'hello', protocol: 2 }), JSON.stringify({ type: 'welcome', protocol: 2, code: CODE }), encodeMessage({ type: 'hello', protocol: 2, code: CODE } as never)];
     for (const f of frames) {
       const c = await connect(h.port);
       c.ws.send(f);
@@ -306,7 +307,7 @@ describe('frames', () => {
   it('before the welcome a frame may be a few KB at most; after it, as large as the limit says (1009 beyond it)', async () => {
     const { h, engines } = await host({ maxHelloBytes: 1024, maxFrameBytes: 300_000 });
     const early = await connect(h.port);
-    early.ws.send(JSON.stringify({ type: 'hello', protocol: 1, code: CODE, pad: 'x'.repeat(2000) }));
+    early.ws.send(JSON.stringify({ type: 'hello', protocol: 2, code: CODE, pad: 'x'.repeat(2000) }));
     expect((await early.closed).code).toBe(1009);
     const { c } = await join_(h.port);
     const big = new Uint8Array(250_000); // more than the hello limit, under the frame limit
@@ -351,29 +352,57 @@ describe('a client that breaks the WebSocket protocol', () => {
 });
 
 describe('/__firesim/host and the static routes of the host', () => {
-  it('says who the host is, with exactly these fields and nothing that is a secret', async () => {
+  it('says before the code only that it is a FireSim host that wants a code (protocol 2): exactly these three fields, and nothing of the computer or a secret', async () => {
     const { h } = await host({ name: 'Test desk', maxSessions: 3 });
     const r = await get(h.port, '/__firesim/host');
     expect(r.status).toBe(200);
     expect(r.headers['content-type']).toBe('application/json; charset=utf-8');
     expect(r.headers['cache-control']).toBe('no-store');
-    const body = JSON.parse(r.body) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(['app', 'cores', 'maxSessions', 'name', 'node', 'protocol', 'sessions']);
-    expect(body).toMatchObject({ app: 'firesim-desktop-host', protocol: 1, name: 'Test desk', sessions: 0, maxSessions: 3, node: process.versions.node });
-    expect(Number.isInteger(body.cores) && (body.cores as number) >= 1).toBe(true);
-    // No code, no path, no environment.
-    for (const secret of [CODE, dist, SECRET_ENV, process.cwd(), process.env.HOME ?? '\u0000', process.env.PATH ?? '\u0000']) expect(r.body, secret).not.toContain(secret);
+    expect(r.body).toBe('{"app":"firesim-desktop-host","protocol":2,"requiresCode":true}');
+    expect(JSON.parse(r.body)).toEqual({ app: 'firesim-desktop-host', protocol: 2, requiresCode: true });
+    // No code, no name, no core count, no Node version, no session count, no path, no environment, no host name.
+    for (const secret of [CODE, 'Test desk', dist, SECRET_ENV, process.cwd(), process.env.HOME ?? '\u0000', process.env.PATH ?? '\u0000', process.versions.node, 'cores', 'sessions', '"node"', 'name']) expect(r.body, secret).not.toContain(secret);
     const more = await get(h.port, '/__firesim/host?x=1&code=' + CODE);
     expect(more.body).toBe(r.body);
     expect((await get(h.port, '/__firesim/host', 'HEAD')).body).toBe('');
     expect((await get(h.port, '/__firesim/host', 'POST')).status).toBe(405);
   });
 
-  it('counts the sessions it is running', async () => {
-    const { h } = await host({ maxSessions: 3 });
-    await join_(h.port);
-    await join_(h.port);
-    expect(JSON.parse((await get(h.port, '/__firesim/host')).body)).toMatchObject({ sessions: 2, maxSessions: 3 });
+  it('the welcome, after the code, carries what the host is: name, cores, Node version, and the sessions running (this one included) and allowed', async () => {
+    const { h } = await host({ name: 'Test desk', maxSessions: 3 });
+    const a = await join_(h.port);
+    expect(a.welcome).toMatchObject({ type: 'welcome', protocol: 2, name: 'Test desk', node: process.versions.node, sessions: 1, maxSessions: 3 });
+    expect(Number.isInteger(a.welcome!.cores) && a.welcome!.cores! >= 1).toBe(true);
+    expect(Object.keys(a.welcome!).sort()).toEqual(['cores', 'maxSessions', 'name', 'node', 'protocol', 'session', 'sessions', 'type']);
+    const b = await join_(h.port);
+    expect(b.welcome).toMatchObject({ sessions: 2, maxSessions: 3 });
+  });
+
+  it('a wrong code gets none of that: the answer to a refused hello is a close and nothing about the computer', async () => {
+    const { h } = await host({ name: 'Test desk' });
+    const { c, welcome } = await join_(h.port, 'WRONG234');
+    expect(welcome).toBeNull();
+    expect((await c.closed).code).toBe(4401);
+    expect(c.received).toEqual([]);
+  });
+
+  it("a hello of another version of the link is closed with 4426 and the host's own version, not 4400 or 4401, and it does not count as a wrong code", async () => {
+    const { h, engines, logs } = await host({ rateLimit: { max: 2 } });
+    for (const protocol of [1, 3, 0, 99]) {
+      const c = await connect(h.port);
+      c.ws.send(JSON.stringify({ type: 'hello', protocol, code: CODE }));
+      expect(await c.closed, String(protocol)).toEqual({ code: 4426, reason: 'protocol 2' });
+      expect(c.received).toEqual([]);
+    }
+    // the same with a wrong code: the version is said first, and nothing about the code
+    const wrong = await connect(h.port);
+    wrong.ws.send(JSON.stringify({ type: 'hello', protocol: 1, code: 'WRONG234' }));
+    expect((await wrong.closed).code).toBe(4426);
+    expect(engines).toHaveLength(0);
+    // five version refusals did not use up the two wrong codes this address may send
+    expect((await join_(h.port, 'WRONG234')).welcome).toBeNull();
+    expect((await join_(h.port, CODE)).welcome?.type).toBe('welcome');
+    expect(logs.some((l) => l.includes('hello of protocol 1 (this host speaks 2)'))).toBe(true);
   });
 
   it('serves the app and refuses traversal through its own routes', async () => {
@@ -398,7 +427,7 @@ describe('what the log holds', () => {
     const wrong = await join_(h.port, 'GUESSED22');
     await wrong.c.closed;
     const bad = await connect(h.port);
-    bad.ws.send(`{"type":"hello","protocol":1,"code":"${CODE}","extra":"PAYLOAD-MARKER"}x`);
+    bad.ws.send(`{"type":"hello","protocol":2,"code":"${CODE}","extra":"PAYLOAD-MARKER"}x`);
     await bad.closed;
     const a = await join_(h.port);
     a.c.ws.send(encodeMessage({ type: 'edit', edit: { id: 'secret-edit-marker' } as never, time: 0 }));
@@ -437,6 +466,24 @@ describe('flow control, heartbeat and stop', () => {
     await waitFor(() => engines[0]!.holds.length === 2, 10000, 'the hold to be lifted');
     expect(engines[0]!.holds).toEqual([true, false]);
   }, 30000);
+
+  it('has the pair of numbers the throttled-link measurement chose, 8 MiB to hold and 4 MiB to let go (0.8.0 had 16 and 4), and a host that is given none uses them', async () => {
+    expect(DEFAULT_HIGH_WATER_BYTES).toBe(8 * 1024 * 1024);
+    expect(DEFAULT_LOW_WATER_BYTES).toBe(4 * 1024 * 1024);
+    const { h, engines } = await host(); // no pair given
+    const { c } = await join_(h.port);
+    (c.ws as unknown as { _socket: { pause(): void; resume(): void } })._socket.pause();
+    const frame = new Uint8Array(1024 * 1024);
+    // The kernel takes some of what is sent to a client that does not read (its buffers, up to tens of MiB here); the rest queues in the host and is held at 8 MiB.
+    for (let i = 0; i < 200 && engines[0]!.holds.length === 0; i++) {
+      engines[0]!.events.frame(frame.slice());
+      await new Promise((r) => setTimeout(r, 2));
+    }
+    expect(engines[0]!.holds).toEqual([true]);
+    (c.ws as unknown as { _socket: { resume(): void } })._socket.resume();
+    await waitFor(() => engines[0]!.holds.length === 2, 20000, 'the hold to be lifted');
+    expect(engines[0]!.holds).toEqual([true, false]);
+  }, 60000);
 
   it('pings its sessions, and closes one that has gone silent', async () => {
     const { h, engines } = await host({ pingIntervalMs: 40, deadAfterMs: 250 });
@@ -672,4 +719,202 @@ describe('limits on what a session may send and may owe', () => {
     ok.c.ws.send(new Uint8Array(20 * 1024 * 1024));
     await waitFor(() => engines[1]!.frames.length === 1, 10000, 'the 20 MiB frame');
   }, 30000);
+});
+
+describe('origins the owner lists (--allow-origin, --allow-app)', () => {
+  const APP = 'https://localhost';
+  const IOS = 'capacitor://localhost';
+  const LISTED = [APP, IOS, 'http://192.168.1.50:4173'];
+
+  it('accepts the handshake of a listed origin with the right code, and the session works as any other', async () => {
+    const { h, engines } = await host({ allowedOrigins: LISTED, maxSessions: 5 });
+    for (const origin of LISTED) {
+      const { c, welcome } = await join_(h.port, CODE, { origin });
+      expect(welcome?.type, origin).toBe('welcome');
+      c.ws.send(encodeMessage({ type: 'run', until: 1 }));
+    }
+    await waitFor(() => engines.length === 3 && engines.every((e) => e.frames.length === 1), 3000, 'the frames');
+  });
+
+  it('refuses the handshake of any origin that is not listed with 403 (and no session), however much it looks like a listed one', async () => {
+    const { h, engines, logs } = await host({ allowedOrigins: LISTED, maxSessions: 10 });
+    for (const origin of ['http://localhost', 'https://localhost:8443', 'https://localhost.evil.example', 'https://evil.example', 'capacitor://localhost:80', 'ionic://localhost', 'http://192.168.1.50', 'null', 'file://', 'https://user@localhost', '*']) {
+      await expect(openClient(h.port, { origin }), origin).rejects.toMatchObject({ status: 403 });
+    }
+    expect(engines).toHaveLength(0);
+    expect(logs.some((l) => l.includes('another origin'))).toBe(true);
+  });
+
+  it('refuses a listed origin with a wrong code, exactly as it refuses any page: 4401 and the rate limit', async () => {
+    const { h, engines } = await host({ allowedOrigins: LISTED });
+    for (let i = 1; i <= 5; i++) {
+      const { c, welcome } = await join_(h.port, `WRONG23${i}`, { origin: APP });
+      expect(welcome).toBeNull();
+      expect((await c.closed).code, `wrong code ${i}`).toBe(4401);
+    }
+    const { c, welcome } = await join_(h.port, CODE, { origin: APP });
+    expect(welcome).toBeNull();
+    expect((await c.closed).code).toBe(4429);
+    expect(engines).toHaveLength(0);
+  });
+
+  it('refuses what it refused before when no origin is listed: the app origins are 403 without --allow-app', async () => {
+    const { h } = await host();
+    for (const origin of [APP, IOS]) await expect(openClient(h.port, { origin }), origin).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("keeps the Host allowlist for a listed origin: a rebinding-style Host (a name that is not the computer's) is 421, with the app origin and with a page of the attacker's own", async () => {
+    const { h, engines } = await host({ allowedOrigins: LISTED, allowedHosts: ['desk-pc', 'desk-pc.local'], maxSessions: 10 });
+    const evil = `attacker.example:${h.port}`;
+    await expect(openClient(h.port, { host: evil, origin: APP })).rejects.toMatchObject({ status: 421 });
+    await expect(openClient(h.port, { host: evil, origin: `http://${evil}` })).rejects.toMatchObject({ status: 421 });
+    await expect(openClient(h.port, { host: `localhost.attacker.example:${h.port}`, origin: APP })).rejects.toMatchObject({ status: 421 });
+    expect((await get(h.port, '/__firesim/host', 'GET', { Host: evil, Origin: APP })).status).toBe(421);
+    expect(engines).toHaveLength(0);
+    for (const name of [`127.0.0.1:${h.port}`, `192.168.1.20:${h.port}`, `[::1]:${h.port}`, `desk-pc.local:${h.port}`, `localhost:${h.port}`]) expect((await join_(h.port, CODE, { host: name, origin: APP })).welcome?.type, name).toBe('welcome');
+  });
+
+  describe('/__firesim/host from another origin (CORS)', () => {
+    const PROBE = '{"app":"firesim-desktop-host","protocol":2,"requiresCode":true}';
+
+    it('answers a listed origin with its own origin in Access-Control-Allow-Origin (never *, never with credentials), the same three fields, and Vary: Origin', async () => {
+      const { h } = await host({ allowedOrigins: LISTED });
+      for (const origin of LISTED) {
+        const r = await get(h.port, '/__firesim/host', 'GET', { Origin: origin });
+        expect(r.status, origin).toBe(200);
+        expect(r.headers['access-control-allow-origin'], origin).toBe(origin);
+        expect(r.headers['access-control-allow-credentials'], origin).toBeUndefined();
+        expect(String(r.headers.vary), origin).toMatch(/\bOrigin\b/);
+        expect(r.body, origin).toBe(PROBE);
+        const head = await get(h.port, '/__firesim/host', 'HEAD', { Origin: origin });
+        expect(head.headers['access-control-allow-origin']).toBe(origin);
+      }
+    });
+
+    it("gives no CORS header to an origin that is not listed, to a page of the host's own origin, or to a client with no Origin: a browser will not let those pages read it", async () => {
+      const { h } = await host({ allowedOrigins: LISTED });
+      for (const origin of ['https://evil.example', 'http://localhost', 'null', 'https://localhost:8443', `http://127.0.0.1:${h.port}`]) {
+        const r = await get(h.port, '/__firesim/host', 'GET', { Origin: origin });
+        expect(r.status, origin).toBe(200);
+        expect(r.headers['access-control-allow-origin'], origin).toBeUndefined();
+        expect(String(r.headers.vary), origin).toMatch(/\bOrigin\b/);
+      }
+      const none = await get(h.port, '/__firesim/host');
+      expect(none.headers['access-control-allow-origin']).toBeUndefined();
+      expect(JSON.stringify(none.headers)).not.toContain('"*"');
+    });
+
+    it('gives no CORS header to anyone when no origin is listed', async () => {
+      const { h } = await host();
+      for (const origin of [APP, IOS, 'https://evil.example']) expect((await get(h.port, '/__firesim/host', 'GET', { Origin: origin })).headers['access-control-allow-origin'], origin).toBeUndefined();
+    });
+
+    it('answers the preflight of a listed origin with 204, its origin, GET and HEAD and the two headers a no-store fetch adds, and says the private network may be reached when asked', async () => {
+      const { h } = await host({ allowedOrigins: LISTED });
+      const r = await get(h.port, '/__firesim/host', 'OPTIONS', { Origin: APP, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'cache-control, pragma', 'Access-Control-Request-Private-Network': 'true' });
+      expect(r.status).toBe(204);
+      expect(r.body).toBe('');
+      expect(r.headers['access-control-allow-origin']).toBe(APP);
+      expect(r.headers['access-control-allow-methods']).toBe('GET, HEAD, OPTIONS');
+      expect(String(r.headers['access-control-allow-headers']).toLowerCase()).toBe('cache-control, pragma');
+      expect(r.headers['access-control-allow-private-network']).toBe('true');
+      expect(Number(r.headers['access-control-max-age'])).toBeGreaterThan(0);
+      expect(r.headers['access-control-allow-credentials']).toBeUndefined();
+      // without the private network question, no answer to it
+      const plain = await get(h.port, '/__firesim/host', 'OPTIONS', { Origin: IOS, 'Access-Control-Request-Method': 'GET' });
+      expect(plain.status).toBe(204);
+      expect(plain.headers['access-control-allow-origin']).toBe(IOS);
+      expect(plain.headers['access-control-allow-private-network']).toBeUndefined();
+    });
+
+    it('does not answer the preflight of an origin that is not listed, or of a request with no Origin: 405 and no CORS header; and the engine path has no preflight at all', async () => {
+      const { h } = await host({ allowedOrigins: LISTED });
+      const refused: Record<string, string>[] = [{ Origin: 'https://evil.example', 'Access-Control-Request-Method': 'GET' }, { Origin: 'null', 'Access-Control-Request-Method': 'GET' }, { 'Access-Control-Request-Method': 'GET' }];
+      for (const headers of refused) {
+        const r = await get(h.port, '/__firesim/host', 'OPTIONS', headers);
+        expect(r.status, JSON.stringify(headers)).toBe(405);
+        expect(r.headers['access-control-allow-origin']).toBeUndefined();
+        expect(r.headers['access-control-allow-methods']).toBeUndefined();
+      }
+      expect((await get(h.port, '/__firesim/host', 'POST', { Origin: APP })).status).toBe(405);
+      expect((await get(h.port, '/__firesim/engine', 'OPTIONS', { Origin: APP, 'Access-Control-Request-Method': 'GET' })).headers['access-control-allow-origin']).toBeUndefined();
+    });
+
+    it("gives no CORS header on the app's own files: a listed origin may read /__firesim/host and nothing else", async () => {
+      const { h } = await host({ allowedOrigins: LISTED });
+      for (const path of ['/', '/index.html', '/nope']) expect((await get(h.port, path, 'GET', { Origin: APP })).headers['access-control-allow-origin'], path).toBeUndefined();
+    });
+  });
+});
+
+describe('the one-use link of --open (/__firesim/open)', () => {
+  /** A host with its tokens on a clock the test moves. */
+  async function opening(): Promise<{ h: HostHandle; tokens: OpenTokens; clock: { t: number }; logs: string[] }> {
+    const clock = { t: 5_000_000 };
+    const tokens = new OpenTokens({ now: () => clock.t });
+    const { h, logs } = await host({ openTokens: tokens });
+    return { h, tokens, clock, logs };
+  }
+  const redirect = (r: { status: number; headers: Record<string, string | string[] | undefined> }): string | undefined => (r.status === 302 ? String(r.headers.location) : undefined);
+
+  it('redirects a good token, once, to /#code=CODE, and never keeps the answer', async () => {
+    const { h, tokens, logs } = await opening();
+    const token = tokens.issue();
+    const first = await get(h.port, `/__firesim/open?t=${token}`);
+    expect(redirect(first)).toBe(`/#code=${CODE}`);
+    expect(first.headers['cache-control']).toBe('no-store');
+    expect(first.headers['referrer-policy']).toBe('no-referrer');
+    expect(first.body).toBe('');
+    const again = await get(h.port, `/__firesim/open?t=${token}`);
+    expect(again.status).toBe(410);
+    expect(again.body).toBe('This link was used already or has run out. Open the address the host printed.');
+    expect(again.headers.location).toBeUndefined();
+    expect(again.body).not.toContain(CODE);
+    expect(logs.join('\n')).not.toContain(CODE);
+    expect(logs.filter((l) => l.includes('one-use link used'))).toHaveLength(1);
+  });
+
+  it('is good for 60 seconds, and a token that has run out gets the same refusal as a spent one (and no code)', async () => {
+    const { h, tokens, clock } = await opening();
+    const a = tokens.issue();
+    const b = tokens.issue();
+    clock.t += 60_000;
+    expect(redirect(await get(h.port, `/__firesim/open?t=${a}`))).toBe(`/#code=${CODE}`);
+    clock.t += 1;
+    const late = await get(h.port, `/__firesim/open?t=${b}`);
+    expect(late.status).toBe(410);
+    expect(late.body).not.toContain(CODE);
+  });
+
+  it('refuses no token, a wrong one and an empty one with 410 and no code', async () => {
+    const { h, tokens } = await opening();
+    const token = tokens.issue();
+    for (const path of ['/__firesim/open', '/__firesim/open?t=', '/__firesim/open?t=wrong', `/__firesim/open?t=${token}x`, `/__firesim/open?T=${token}`, '/__firesim/open?t=%00']) {
+      const r = await get(h.port, path);
+      expect(r.status, path).toBe(410);
+      expect(JSON.stringify(r)).not.toContain(CODE);
+    }
+    expect(redirect(await get(h.port, `/__firesim/open?t=${token}`))).toBe(`/#code=${CODE}`); // the wrong tries did not spend it
+  });
+
+  it('is spent only by a GET: a HEAD, a POST or an OPTIONS leave it for the browser', async () => {
+    const { h, tokens } = await opening();
+    const token = tokens.issue();
+    for (const method of ['HEAD', 'POST', 'OPTIONS', 'PUT']) expect((await get(h.port, `/__firesim/open?t=${token}`, method)).status, method).toBe(405);
+    expect(redirect(await get(h.port, `/__firesim/open?t=${token}`))).toBe(`/#code=${CODE}`);
+  });
+
+  it("keeps the Host allowlist: a link opened by a name that is not the computer's is 421, and does not spend the token", async () => {
+    const { h, tokens } = await opening();
+    const token = tokens.issue();
+    expect((await get(h.port, `/__firesim/open?t=${token}`, 'GET', { Host: `attacker.example:${h.port}` })).status).toBe(421);
+    expect(redirect(await get(h.port, `/__firesim/open?t=${token}`))).toBe(`/#code=${CODE}`);
+  });
+
+  it("is not a route of the host without --open: the path is the static server's (a 404), and no code comes out of it", async () => {
+    const { h } = await host();
+    const r = await get(h.port, '/__firesim/open?t=anything');
+    expect(r.status).toBe(404);
+    expect(JSON.stringify(r)).not.toContain(CODE);
+  });
 });

@@ -1,0 +1,802 @@
+From 87147f726c012dc3f9f8d7909bb7b197066976d4 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 08:27:53 +0000
+Subject: [PATCH 1/5] Perf and alloc unit tests: measure the work and wait for
+ a state, not a count of rebuilds or the clock of a busy machine
+
+sliceRecorder.perf.test.ts times a call as the smaller of its elapsed time and its CPU time, and divides each round by how much slower than its best this
+process runs at that moment (a fixed loop timed in the same process), so a neighbour taking the core for a scheduler's quantum or slowing it down no longer
+reads as a slow recorder; the limits are unchanged. detailStreaks.alloc.test.ts waits until the median of the last 11 windows is quiet (and again after the
+collections) instead of for 1,200 or 4,000 rebuilds, says so when a case never settles, and has a test timeout that a busy machine does not run out of.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ src/render/slice/sliceRecorder.perf.test.ts | 73 ++++++++++++++++-----
+ src/render/wind/detailStreaks.alloc.test.ts | 53 ++++++++++-----
+ 2 files changed, 95 insertions(+), 31 deletions(-)
+
+diff --git a/src/render/slice/sliceRecorder.perf.test.ts b/src/render/slice/sliceRecorder.perf.test.ts
+index b3cfd23..57c5ac1 100644
+--- a/src/render/slice/sliceRecorder.perf.test.ts
++++ b/src/render/slice/sliceRecorder.perf.test.ts
+@@ -3,6 +3,19 @@
+  * sampling of the slice, the packing) and one read, at the two lattices the design sizes it for (90 x 54, a 6 km line on the 133 m
+  * grid; 192 x 56, the longest line), and that a long stream of arrivals, thinning cycles and cuts included, keeps the heap flat and the
+  * recording inside its budget. Timings and byte counts go to stderr like the `[slice perf]` lines; the assertions are the design's own limits.
++ *
++ * The time of a call is the smaller of the time that passes and the CPU time the process spends in it (`process.cpuUsage()`, user and system). The
++ * limits are claims about what the work costs, and each of the two holds something else as well: the elapsed time every moment the operating system
++ * gave the core to another process, the CPU time what V8's own threads (the garbage collector's helpers, the compiler) do while the call runs. The work
++ * is at most the smaller of them. Beside four to eight busy loops on this 4-core machine (the gate's full run is like that, four test workers at
++ * once) the median of a call stayed at 0.9 ms while the p95 of a round of elapsed times read 5, 9 and 13 ms, the multiples of a scheduler's quantum,
++ * and one to four of the nine tests failed for it (`record(snapshot)` read 4.97 and 11.76 ms against its 1.5).
++ *
++ * The other thing a neighbour does is slow the core itself down for minutes at a time (it shares the caches or the core's other hardware thread, or the
++ * host does): on this machine the same loop took 0.31 ms for a while and 0.18 ms after it, within one run of a script, and a whole run of this file read a median
++ * of 1.68 ms for `record(snapshot)` where it reads 0.9 (twice in eight runs with nothing of this repo's running beside it). So each round's p95 is divided by how
++ * much slower than its best this process runs just now, measured in the same process on a fixed loop (`speedFactor`), and the limits, which were set on the machine
++ * at its best, stay as they are. A factor is never below 1.
+  */
+ import * as v8 from 'node:v8';
+ import * as vm from 'node:vm';
+@@ -22,6 +35,36 @@ const log = (s: string): void => {
+   process.stderr.write(`[recorder perf] ${s}\n`);
+ };
+ 
++/** CPU time of this process so far (ms). */
++const cpuMs = (): number => {
++  const u = process.cpuUsage();
++  return (u.user + u.system) / 1000;
++};
++
++/** What `f()` cost (ms): the smaller of the elapsed time and the CPU time of the call (see the header). */
++function costOf(f: () => void): number {
++  const w0 = performance.now();
++  const c0 = cpuMs();
++  f();
++  return Math.min(performance.now() - w0, cpuMs() - c0);
++}
++
++/** A fixed loop of the kind of work the tests time (floating point and typed arrays), 4,860 points as the 90 x 54 lattice, and what it costs on this machine at its best (ms; the median of 15 calls). */
++const CALIBRATION_BEST_MS = 0.18;
++const calIn = new Float32Array(4860).map((_, i) => 1 + (i % 17) * 0.37);
++const calOut = new Float32Array(4860);
++function calibrationWork(): void {
++  for (let r = 0; r < 20; r++) for (let i = 0; i < calIn.length; i++) calOut[i] = Math.sqrt(calIn[i]! * calIn[i]! + 1.5) + calOut[i]! * 0.5;
++}
++/** How many times slower than at its best this process runs just now (1 or more): the median of 15 calls of the fixed loop over `CALIBRATION_BEST_MS`. */
++function speedFactor(): number {
++  const xs: number[] = [];
++  for (let i = 0; i < 15; i++) xs.push(costOf(calibrationWork));
++  xs.sort((a, b) => a - b);
++  return Math.max(1, xs[7]! / CALIBRATION_BEST_MS);
++}
++for (let i = 0; i < 300; i++) calibrationWork(); // (warm: the first calls of the loop are interpreted)
++
+ const MiB = 1048576;
+ const ORIGIN = { lat: -33.7, lon: 150.3 };
+ const ridge = (x: number, y: number): number => 600 + 700 * Math.exp(-((x / 900) ** 2)) + 150 * Math.sin(y / 700);
+@@ -52,24 +95,25 @@ const quantile = (xs: number[], q: number): number => {
+ };
+ 
+ /**
+- * Median, p95 and max of `f` over `n` calls. On a shared machine another process can take the core for a few milliseconds in any round,
+- * which says nothing about `f`, so the round is repeated (up to `rounds` times) while its p95 is over `limit`, and the best round is the
+- * answer; the p95 of every round is logged. `setup` runs before each round (a fresh recorder).
++ * Median, p95 and max of the cost of `f` (`costOf`) over `n` calls, in ms, as they would read on this machine at its best: the p95 and the max of a round are divided
++ * by the smaller of the speed factors measured just before and just after it (`speedFactor`), the median is left as it was read. A neighbour can still take the core
++ * for a moment, which says nothing about `f`, so the round is repeated (up to `rounds` times) while its p95 is over `limit`, and the best round is the answer; the p95 of
++ * every round (divided) is logged, and the factor of the best round as `k`. `setup` runs before each round (a fresh recorder).
+  */
+-function timeIt(f: (i: number) => void, n: number, limit: number, rounds: number, setup: () => void = () => undefined): { p50: number; p95: number; max: number; p95s: number[] } {
++function timeIt(f: (i: number) => void, n: number, limit: number, rounds: number, setup: () => void = () => undefined): { p50: number; p95: number; max: number; p95s: number[]; k: number } {
+   setup();
+   for (let i = 0; i < 40; i++) f(i); // warm up so that V8 has optimised the loops
+-  let best: { p50: number; p95: number; max: number } | null = null;
++  let best: { p50: number; p95: number; max: number; k: number } | null = null;
+   const p95s: number[] = [];
+   for (let r = 0; r < rounds; r++) {
+     setup();
++    const before = speedFactor();
+     const ms: number[] = [];
+     for (let i = 0; i < n; i++) {
+-      const t0 = performance.now();
+-      f(i);
+-      ms.push(performance.now() - t0);
++      ms.push(costOf(() => f(i)));
+     }
+-    const round = { p50: quantile(ms, 0.5), p95: quantile(ms, 0.95), max: Math.max(...ms) };
++    const k = Math.min(before, speedFactor());
++    const round = { p50: quantile(ms, 0.5), p95: quantile(ms, 0.95) / k, max: Math.max(...ms) / k, k };
+     p95s.push(round.p95);
+     if (!best || round.p95 < best.p95) best = round;
+     if (best.p95 < limit) break;
+@@ -161,7 +205,7 @@ describe('one wanted arrival and one read', () => {
+         );
+         log(`${name} ${columns} x ${rows}: of that, sampleSlice alone: median ${sampling.p50.toFixed(2)} ms, p95 ${sampling.p95.toFixed(2)} ms; the recorder's own arrive + store: median ${own.p50.toFixed(3)} ms, p95 ${own.p95.toFixed(3)} ms`);
+         expect(own.p95).toBeLessThan(ownLimitMs);
+-        log(`${name} ${columns} x ${rows}: arrive + sample + store: median ${add.p50.toFixed(2)} ms, p95 ${add.p95.toFixed(2)} ms, max ${add.max.toFixed(2)} ms (p95 of each round: ${add.p95s.map((x) => x.toFixed(2)).join(', ')})`);
++        log(`${name} ${columns} x ${rows}: arrive + sample + store: median ${add.p50.toFixed(2)} ms, p95 ${add.p95.toFixed(2)} ms, max ${add.max.toFixed(2)} ms (p95 of each round: ${add.p95s.map((x) => x.toFixed(2)).join(', ')}; this machine x${add.k.toFixed(2)} its best)`);
+         expect(add.p95).toBeLessThan(limitMs);
+ 
+         // read, into a reused slice
+@@ -178,7 +222,7 @@ describe('one wanted arrival and one read', () => {
+           0.5,
+           6,
+         );
+-        log(`${name} ${columns} x ${rows}: read: median ${read.p50.toFixed(3)} ms, p95 ${read.p95.toFixed(3)} ms, max ${read.max.toFixed(3)} ms (p95 of each round: ${read.p95s.map((x) => x.toFixed(3)).join(', ')})`);
++        log(`${name} ${columns} x ${rows}: read: median ${read.p50.toFixed(3)} ms, p95 ${read.p95.toFixed(3)} ms, max ${read.max.toFixed(3)} ms (p95 of each round: ${read.p95s.map((x) => x.toFixed(3)).join(', ')}; x${read.k.toFixed(2)})`);
+         expect(read.p95).toBeLessThan(0.5);
+ 
+         // bytes: the model and the real recorder
+@@ -192,6 +236,7 @@ describe('one wanted arrival and one read', () => {
+ 
+         // the thinning itself: the store that crosses the budget (a pointer shuffle, not a copy of the samples)
+         const thinMs: number[] = [];
++        const thinK = speedFactor();
+         for (let rep = 0; rep < 12; rep++) {
+           rec = new SliceRecorder({ budgetBytes: epoch + 60 * per + 100 });
+           rec.setLine(key);
+@@ -201,9 +246,7 @@ describe('one wanted arrival and one read', () => {
+           rec.arrive(t);
+           spec.shownTime = t;
+           scratch = sampleSlice(sampler, terrain, spec, scratch);
+-          const t1 = performance.now();
+-          rec.store(scratch!, t);
+-          thinMs.push(performance.now() - t1);
++          thinMs.push(costOf(() => rec.store(scratch!, t)) / thinK);
+           expect(rec.status().spacingS).toBeGreaterThan(0); // that store did thin
+         }
+         log(`${name} ${columns} x ${rows}: the store that thins: median ${quantile(thinMs, 0.5).toFixed(3)} ms, max ${Math.max(...thinMs).toFixed(3)} ms`);
+@@ -232,7 +275,7 @@ describe('one wanted arrival and one read', () => {
+     );
+     const st = tl.status();
+     const d = tl.read(sectionFromEndpoints([-2900, -1200], [2900, 1500], grid).line!, t, 'prognostic', null, null)!;
+-    log(`record(snapshot), ${d.columns} x ${d.rows}: median ${r.p50.toFixed(2)} ms, p95 ${r.p95.toFixed(2)} ms, max ${r.max.toFixed(2)} ms (p95 of each round: ${r.p95s.map((x) => x.toFixed(2)).join(', ')}); ${st.count} samples, ${st.bytes} B`);
++    log(`record(snapshot), ${d.columns} x ${d.rows}: median ${r.p50.toFixed(2)} ms, p95 ${r.p95.toFixed(2)} ms, max ${r.max.toFixed(2)} ms (p95 of each round: ${r.p95s.map((x) => x.toFixed(2)).join(', ')}; x${r.k.toFixed(2)}); ${st.count} samples, ${st.bytes} B`);
+     expect(r.p95).toBeLessThan(1.5);
+   });
+ });
+diff --git a/src/render/wind/detailStreaks.alloc.test.ts b/src/render/wind/detailStreaks.alloc.test.ts
+index 68a46f8..8ce0135 100644
+--- a/src/render/wind/detailStreaks.alloc.test.ts
++++ b/src/render/wind/detailStreaks.alloc.test.ts
+@@ -5,8 +5,13 @@
+  * test has already optimised the builder (the pattern of `flowGlyphs.alloc.test.ts`). The clock the builder is given costs what a browser's
+  * `performance.now()` costs, a heap number per read, and counts against the kilobyte.
+  *
+- * "Steady state" is after V8 has optimised the code, which a small rebuild reaches only after 100 to 200 of them: each case runs until
+- * three windows in a row are quiet, and the number of rebuilds that took is logged.
++ * "Steady state" is after V8 has optimised the code, which a small rebuild reaches only after 100 to 200 of them (the relief's functions run once
++ * a rebuild and take 800 to 1,900 on an idle machine). V8 optimises on a thread of its own, so how many rebuilds that takes depends on how much of
++ * the machine that thread gets: each case therefore runs until the median of the last 11 windows is quiet (a state, not a count of rebuilds),
++ * for at most `SETTLE_MS`, and the number of rebuilds that took is logged. The gate's full run once measured the relief in a forest at 2,282.8
++ * bytes a rebuild against the 1,024; beside four busy loops and the other perf tests here it settled after the same 780 rebuilds and read 605, so
++ * that failure was not reproduced and the cause of it is not established: a measurement taken before the code had settled is what it looks like,
++ * and what the state wait below rules out (a case that never settles now says so, instead of reporting the bytes of code that was still warming up).
+  */
+ import * as v8 from 'node:v8';
+ import * as vm from 'node:vm';
+@@ -93,16 +98,26 @@ function windows(rebuild: () => void, count: number, size: number): number[] {
+   return per;
+ }
+ 
+-/** Rebuilds until the code has settled: three quiet windows of 20 in a row (at most `limit` rebuilds: 1200, or more for the relief, whose functions run once a rebuild and are optimised later). */
+-function settle(rebuild: () => void, limit = 1200): number {
+-  let quiet = 0;
+-  let done = 0;
+-  while (quiet < 3 && done < limit) {
+-    const w = windows(rebuild, 1, 20)[0]!;
+-    done += 20;
+-    quiet = w < 700 ? quiet + 1 : 0;
++/** How long a case may take to settle (ms): an idle machine needs a second or two, and a machine whose cores are all busy a good deal more. */
++const SETTLE_MS = 90_000;
++/** The windows a case is judged settled on, each of 20 rebuilds, and the allocation under which the median of them is quiet (a steady rebuild here is 600 bytes or less, unoptimised code 2,000 or more). */
++const SETTLE_WINDOWS = 11;
++const QUIET_BYTES = 700;
++
++const medianOf = (xs: number[]): number => [...xs].sort((a, b) => a - b)[xs.length >> 1]!;
++
++/** Rebuilds until the code has settled: the median of the last `SETTLE_WINDOWS` windows of 20 is under `QUIET_BYTES`, or `limitMs` has passed (then `settled` is false). */
++function settle(rebuild: () => void, limitMs = SETTLE_MS): { rebuilds: number; settled: boolean } {
++  const recent: number[] = [];
++  const t0 = performance.now();
++  let rebuilds = 0;
++  while (performance.now() - t0 < limitMs) {
++    recent.push(windows(rebuild, 1, 20)[0]!);
++    rebuilds += 20;
++    if (recent.length > SETTLE_WINDOWS) recent.shift();
++    if (recent.length === SETTLE_WINDOWS && medianOf(recent) < QUIET_BYTES) return { rebuilds, settled: true };
+   }
+-  return done;
++  return { rebuilds, settled: false };
+ }
+ 
+ function makeRebuild(b: DetailBuilder, input: DetailInput): () => void {
+@@ -114,6 +129,9 @@ function makeRebuild(b: DetailBuilder, input: DetailInput): () => void {
+   };
+ }
+ 
++/** The default test timeout of 60 s is not enough where the cores are all busy: a run beside four busy loops and the other perf tests ran out of it with the nine cases all measured. */
++const TEST_MS = 900_000;
++
+ describe('a steady rebuild of the detailed streaks allocates under 1 kB', () => {
+   it('with TurboFan inlining off, begin and every step of a sliced rebuild, for a tablet, a phone, rough ground, a wall and a calm field', () => {
+     v8.setFlagsFromString('--no-turbo-inlining');
+@@ -123,20 +141,22 @@ describe('a steady rebuild of the detailed streaks allocates under 1 kB', () =>
+         const sc = makeDetailScenario({ ...opts, cap: { glyphs: 2000, segments: 12000 } });
+         const b = createDetailBuilder('high');
+         const rebuild = makeRebuild(b, { ...(relief ? reliefInput(sc, relief) : sc.input), now: browserClock() });
+-        const settled = settle(rebuild, relief ? 4000 : 1200);
++        const first = settle(rebuild);
+         expect(b.out.lines, name).toBeGreaterThanOrEqual(minLines);
+         gc();
+         gc();
++        const again = settle(rebuild); // (a collection can throw away code that was not hot enough to keep: the windows below are of the code as it stands after it)
+         const per = windows(rebuild, 21, 20).sort((x, y) => x - y);
+         const median = per[per.length >> 1]!;
+-        lines.push(`${name}: ${b.out.lines} lines, ${b.out.segments} segments; settled after ${settled} rebuilds; ${median.toFixed(0)} B per rebuild (best ${per[0]!.toFixed(0)}, worst ${per[per.length - 1]!.toFixed(0)})`);
++        lines.push(`${name}: ${b.out.lines} lines, ${b.out.segments} segments; settled after ${first.rebuilds} rebuilds and ${again.rebuilds} more after the collections; ${median.toFixed(0)} B per rebuild (best ${per[0]!.toFixed(0)}, worst ${per[per.length - 1]!.toFixed(0)})`);
++        expect(first.settled && again.settled, `${name}: the allocation settled under ${QUIET_BYTES} bytes a rebuild within ${SETTLE_MS / 1000} s (the windows after it: ${per.map((x) => x.toFixed(0)).join(', ')})`).toBe(true);
+         expect(median, name).toBeLessThan(1024);
+       }
+       for (const line of lines) log(line);
+     } finally {
+       v8.setFlagsFromString('--turbo-inlining');
+     }
+-  });
++  }, TEST_MS);
+ 
+   it('the builder itself is tiny: with a clock that returns a whole number a rebuild allocates under 256 bytes', () => {
+     v8.setFlagsFromString('--no-turbo-inlining');
+@@ -145,14 +165,15 @@ describe('a steady rebuild of the detailed streaks allocates under 1 kB', () =>
+       const clock = counterClock(0);
+       const b = createDetailBuilder('high');
+       const rebuild = makeRebuild(b, { ...sc.input, now: clock.now });
+-      settle(rebuild);
++      expect(settle(rebuild).settled, 'the allocation settled').toBe(true);
+       gc();
+       gc();
++      expect(settle(rebuild).settled, 'and again after the collections').toBe(true);
+       const per = windows(rebuild, 21, 20).sort((x, y) => x - y);
+       log(`whole-number clock: ${per[per.length >> 1]!.toFixed(0)} B per rebuild`);
+       expect(per[per.length >> 1]!).toBeLessThan(256);
+     } finally {
+       v8.setFlagsFromString('--turbo-inlining');
+     }
+-  });
++  }, TEST_MS);
+ });
+
+From 8d10ea7315de0b9da75f779f32a64beacd3e9657 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 08:30:39 +0000
+Subject: [PATCH 2/5] alloc test header: say what was and was not established
+ about the gate's 2,282.8 bytes
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ src/render/wind/detailStreaks.alloc.test.ts | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/render/wind/detailStreaks.alloc.test.ts b/src/render/wind/detailStreaks.alloc.test.ts
+index 8ce0135..a072b1b 100644
+--- a/src/render/wind/detailStreaks.alloc.test.ts
++++ b/src/render/wind/detailStreaks.alloc.test.ts
+@@ -9,9 +9,10 @@
+  * a rebuild and take 800 to 1,900 on an idle machine). V8 optimises on a thread of its own, so how many rebuilds that takes depends on how much of
+  * the machine that thread gets: each case therefore runs until the median of the last 11 windows is quiet (a state, not a count of rebuilds),
+  * for at most `SETTLE_MS`, and the number of rebuilds that took is logged. The gate's full run once measured the relief in a forest at 2,282.8
+- * bytes a rebuild against the 1,024; beside four busy loops and the other perf tests here it settled after the same 780 rebuilds and read 605, so
+- * that failure was not reproduced and the cause of it is not established: a measurement taken before the code had settled is what it looks like,
+- * and what the state wait below rules out (a case that never settles now says so, instead of reporting the bytes of code that was still warming up).
++ * bytes a rebuild against the 1,024. That was not reproduced: beside four busy loops and the other perf tests of this repo it settled after the same
++ * 780 rebuilds and read 605, so the cause is not established. The explanation left is code that V8 had not yet optimised when the windows were read,
++ * which a count of rebuilds could not tell from a regression and the state wait rules out: a case that does not settle now fails by saying so, and one
++ * that does is measured after it.
+  */
+ import * as v8 from 'node:v8';
+ import * as vm from 'node:vm';
+
+From 41381af82ce776b56f73c9815820b4b0ee78c543 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 08:32:57 +0000
+Subject: [PATCH 3/5] e2e: wait for the state each failing spec was reading,
+ not for a time; repeat a wall-clock measure
+
+Reproduced under two workers and a busy loop: layers.spec.ts read the view before it had taken the landscape size (6.48 px a cell for 2.91; the canvas buffer was still
+portrait 3 s after the resize), wind-detail-render.spec.ts ended its hand-over window of 4 s at 3 frames and a fade of 0.5, pace.spec.ts's tracker saw frames 2 to 4 s
+apart and published nothing for two minutes (the spec now skips the drawing), and gallery-070.spec.ts saw the pause after 18 s against a bound of 30 s.
+air-slice.spec.ts reads the layout only when the panel has drawn the scene's latest slice and its boxes have been the same for four frames (not reproduced).
+wind-glyphs.spec.ts takes each slice-time measure up to four times from an empty log and keeps the best round.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ e2e/air-slice.spec.ts          |  49 ++++++++-
+ e2e/gallery-070.spec.ts        |   7 +-
+ e2e/layers.spec.ts             |  14 ++-
+ e2e/pace.spec.ts               |   8 ++
+ e2e/wind-detail-render.spec.ts |  23 +++--
+ e2e/wind-glyphs.spec.ts        | 178 +++++++++++++++++++++------------
+ 6 files changed, 203 insertions(+), 76 deletions(-)
+
+diff --git a/e2e/air-slice.spec.ts b/e2e/air-slice.spec.ts
+index 6cbeaad..817e39f 100644
+--- a/e2e/air-slice.spec.ts
++++ b/e2e/air-slice.spec.ts
+@@ -213,6 +213,52 @@ const blockBoxes = (
+     };
+   });
+ 
++/**
++ * Resolves when the tool's layout is the layout it is going to stay in: the panel has drawn the scene's own latest slice (its canvas carries the slice's number) and
++ * every box the layout checks read has been the same in four display frames in a row. The panel lays a slice out in the display frame after the one that made it
++ * (`setData` only notes it, so that the update that places a line stays short), the height of its picture is part of that layout, and a window that has changed size
++ * reaches the page's observers in a frame of its own (`.dock` also changes its height with a 200 ms CSS transition, which a page only advances on a frame). Where the
++ * frames are seconds apart (the software GL beside another browser: 2 to 4 s between frames in a run of two workers and a busy loop, measured in pace.spec.ts's run) a
++ * read made a fixed time after a change reads the layout from before it, and that is what the gate's full run looks like it read here: Set start's bottom at 753 against
++ * a pinned footer at 726, and at 844 x 390 a body of 158 px where the same flow alone reads 190. (Neither was reproduced: the one run of this flow beside two workers and a
++ * busy loop never reached the step, see the report; the same lag was reproduced and measured for the view's size in layers.spec.ts.) Waits for as many frames as that
++ * takes (at most `maxMs`) and returns how many that was.
++ */
++const layoutSettled = (page: Page, maxMs = 90_000): Promise<number> =>
++  page.evaluate(
++    (max) =>
++      new Promise<number>((resolve) => {
++        const t0 = performance.now();
++        const w = window as unknown as Handle;
++        const box = (sel: string): number[] | null => {
++          const e = document.querySelector(sel);
++          if (!e) return null;
++          const r = e.getBoundingClientRect();
++          return [r.top, r.bottom, r.height, r.width].map(Math.round);
++        };
++        const read = (): { caught: boolean; sig: string } => {
++          const u = w.__firesim.view.slice?.() as { data: { seq: number } | null } | null | undefined;
++          const c = document.querySelector('[data-testid="slice-canvas"]') as HTMLElement | null;
++          const caught = String(u?.data?.seq ?? '') === (c?.dataset.seq ?? '');
++          const boxes = ['[data-testid="air-panel"]', '.slice-tool-body', '[data-testid="slice-canvas"]', '[data-testid="slice-footer"]', '[data-testid="slice-set-a"]', '[data-testid="slice-presets-toggle"]'].map(box);
++          return { caught, sig: JSON.stringify([innerWidth, innerHeight, boxes]) };
++        };
++        let last = '';
++        let same = 0;
++        let frames = 0;
++        const tick = (): void => {
++          frames++;
++          const { caught, sig } = read();
++          same = sig === last ? same + 1 : 0;
++          last = sig;
++          if ((caught && same >= 3) || performance.now() - t0 > max) resolve(frames);
++          else requestAnimationFrame(tick);
++        };
++        requestAnimationFrame(tick);
++      }),
++    maxMs,
++  );
++
+ /** What the first F8 build got wrong: with the body scrolled to the top, the controls under the button are on the screen, none under the pinned footer (`presets` false: the row of Set start, Set end and Swap only). */
+ const expectControlsInView = (at: Awaited<ReturnType<typeof blockBoxes>>, label: string, presets = true): void => {
+   const boxes = [['Set start', at.setA], ['Set end', at.setB], ['Swap', at.swap], ...(presets ? [['Presets', at.presets] as const] : [])] as const;
+@@ -647,6 +693,7 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
+       await expect(button).toBeVisible();
+       await expect(button).toHaveText('Use the 3-D atmosphere');
+       await page.evaluate(() => ((document.querySelector('.slice-tool-body') as HTMLElement).scrollTop = 0)); // (the earlier steps scrolled to the controls)
++      await layoutSettled(page); // (the picture's box follows the slice the preset made, and the panel lays that out a display frame after it: see the helper)
+       // 0.7.0 (F8, owner question 6): the button is directly under the chips, above the controls, and the words stay under the controls as in 0.6.0. At 412 x 915 the
+       // button is wholly in view and inside the sheet with no scroll at all, and Set start, Set end and Swap are above the footer, with the Set start row following
+       // the button. (The first F8 build moved the words up too: Set start then sat at y 772 to 812 behind the footer at 802 and Presets was hidden. 0.4.1 to
+@@ -1232,7 +1279,7 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
+   // `tapAudit` is the repo's tap rule (scripts/audit-tap-targets.mjs).
+   await test.step('844 x 390 with a recording: every control below the picture, scrolled to the middle of the window, has all eight probes on itself', async () => {
+     await page.setViewportSize({ width: 844, height: 390 });
+-    await page.waitForTimeout(900);
++    await layoutSettled(page); // (a state and not a time: the layout of the panel is a frame behind the new size; see the helper)
+     await expect(footer).toBeInViewport();
+     const win = await page.evaluate(() => {
+       const f = document.querySelector('[data-testid="slice-footer"]')!.getBoundingClientRect();
+diff --git a/e2e/gallery-070.spec.ts b/e2e/gallery-070.spec.ts
+index 48638b6..1aafc3d 100644
+--- a/e2e/gallery-070.spec.ts
++++ b/e2e/gallery-070.spec.ts
+@@ -328,7 +328,12 @@ test('gallery 0.7.0: the detailed streaks round the crowns, the Wind detail shee
+   // view and starts the count; the sheet repaints in place, and the picture is taken when it says so.
+   await page.evaluate(() => (window as unknown as Handle).__firesim.view.activity.setLimit(3000));
+   await page.mouse.move(200, 250);
+-  await expect(sheet).toContainText('paused to save battery', { timeout: 30_000 });
++  // The view pauses in a frame of its own loop (the idle clock is read there), and the sheet says so a moment later. Beside another browser the frames of the High
++  // picture over the forest are many seconds apart: in a run of two workers and a busy loop the pause came 18 s after the touch (the statistics said the idle clock was
++  // up from 6 s on but no frame had run to pause the layer until about 15 s, and the clock was then started again, which looks like `SceneView.frame` taking a frame more
++  // than 5 s after the one before for a page that was in the background), and the gate's full run did not see it within 30 s. The bound is a state wait's, not the time
++  // the pause takes.
++  await expect(sheet).toContainText('paused to save battery', { timeout: 240_000 });
+   await shot(page, '47-wind-streaks-paused');
+ });
+ 
+diff --git a/e2e/layers.spec.ts b/e2e/layers.spec.ts
+index 423d0f3..35c0b7e 100644
+--- a/e2e/layers.spec.ts
++++ b/e2e/layers.spec.ts
+@@ -428,7 +428,19 @@ test('Arrows and flow lines on the real layer: the map legend, and the caption a
+   // The farthest zoom on a short landscape phone: a model cell is under 4 px there, so "Zoom in to see the wind arrows." is a line a person can reach
+   // (the unit test holds the arithmetic; this reads what the real layer says, once the view has taken the new size).
+   await page.setViewportSize({ width: 844, height: 390 });
+-  await page.waitForTimeout(1000);
++  // The view takes a new size in the page's next rendering step (a ResizeObserver), and on a machine that draws a frame a second that is not 1 s away: the gate's
++  // full run read 6.48 px a cell at the farthest zoom here, the camera still of the portrait size, where this machine alone reads 2.91. So wait for the state, the
++  // drawing buffer of the canvas having the shape of its box (the renderer and the camera were told the size together), and not for a time.
++  await expect
++    .poll(
++      () =>
++        page.evaluate(() => {
++          const c = document.querySelector('canvas')!;
++          return c.clientHeight < 400 && Math.abs(c.width / c.height - c.clientWidth / c.clientHeight) < 0.02;
++        }),
++      { message: 'the view has taken the landscape size', timeout: 120_000 },
++    )
++    .toBe(true);
+   const far = await page.evaluate(() => {
+     const v = (window as unknown as { __firesim: { view: { rig: { controls: { maxDistance: number } }; lookAt(x: number, y: number, d: number, az: number, tilt: number, animate?: boolean): void; renderNow(): void } } }).__firesim.view;
+     const d = v.rig.controls.maxDistance;
+diff --git a/e2e/pace.spec.ts b/e2e/pace.spec.ts
+index b38984e..d133f4f 100644
+--- a/e2e/pace.spec.ts
++++ b/e2e/pace.spec.ts
+@@ -51,6 +51,14 @@ async function buildSlow(page: Page): Promise<void> {
+   await page.getByTestId('duration').getByRole('radio', { name: /^12/ }).check({ force: true });
+   await page.getByTestId('build').click();
+   await expect(page.getByTestId('sim')).toBeVisible({ timeout: 240_000 });
++  // The drawing is skipped (the frame loop, the clock, the engine and the tracker run as they do; as wind-glyphs.spec.ts does): the page's animation frames come at the
++  // pace of the software GL's frames, which beside another browser are 2 to 4 s apart (measured here, two workers and a busy loop: 1 to 4 frames in 5 s for 140 s), and the
++  // tracker drops its window at every frame more than 2 s after the one before it (paceModel.ts `gapMs`: the display, not the simulation, is slow) and waits 15 s again,
++  // so the tracker published nothing for the first two minutes there (until the other worker's test was over) and in the gate's full run the signal did not come within
++  // 240 s. Nothing in this test looks at a picture.
++  await page.evaluate(() => {
++    (window as unknown as { __firesim: { view: { renderer: { render: () => void } } } }).__firesim.view.renderer.render = () => undefined;
++  });
+ }
+ 
+ /** The button's hit area: every probe point 21 px from its centre (and the diagonals at 15 px) lands on the button, like scripts/audit-tap-targets.mjs. */
+diff --git a/e2e/wind-detail-render.spec.ts b/e2e/wind-detail-render.spec.ts
+index 361809b..5d35aa3 100644
+--- a/e2e/wind-detail-render.spec.ts
++++ b/e2e/wind-detail-render.spec.ts
+@@ -527,16 +527,23 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
+   await test.step('the hand-over has no empty frame, in either direction, with the real frame loop', async () => {
+     await setLayers(page, { windGlyphs: true, wind: 'surface' });
+     await go(50); // the arrows of level 3
+-    const sample = (px: number): Promise<{ glyph: number; detail: number; level: number; fade: number }[]> =>
++    // The frames of a move, one a display frame, until the move has ended where it goes (`to`: the detailed streaks all the way in, or the arrows of
++    // level 3 all the way out) and stayed there three frames, and at least 4 s as before. The streaks' fade is a step of at most 0.25 a frame (a frame's
++    // step is capped at 100 ms of the 400 ms), so it needs four frames at the very least: where the frames are 1.7 s apart (a run of two workers and a busy loop: 3 frames
++    // in the 4 s, the fade 0.5 at the end of them, as in the gate's full run) it needs seven seconds and more, which is why the end is a state and not a time. At most 120 s.
++    const sample = (px: number, to: 'in' | 'out'): Promise<{ glyph: number; detail: number; level: number; fade: number }[]> =>
+       page.evaluate(
+-        ([d]) =>
++        ([d, where]) =>
+           new Promise((resolve) => {
+             const v = (window as unknown as Handle).__firesim.view;
+             const draw = v.renderer.render;
+             v.renderer.render = () => undefined; // the frame loop, the camera and the layer run; the software GL does not draw
+             const seen: { glyph: number; detail: number; level: number; fade: number }[] = [];
+             const t0 = performance.now();
+-            v.lookAt(0, 0, d!, 200, 55, false);
++            const arrived = (f: { glyph: number; detail: number; level: number; fade: number }): boolean =>
++              where === 'in' ? f.glyph === 0 && f.level === 4 && f.detail > 0 && f.fade === 1 : f.detail === 0 && f.level === 3 && f.glyph > 0;
++            let held = 0;
++            v.lookAt(0, 0, d as number, 200, 55, false);
+             const tick = (): void => {
+               const detail = v.scene.getObjectByName('wind-detail')!;
+               seen.push({
+@@ -545,7 +552,9 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
+                 level: v.windGlyphStats!()!.level,
+                 fade: detail.material.uniforms.uFade!.value,
+               });
+-              if (performance.now() - t0 < 4000 && seen.length < 400) requestAnimationFrame(tick);
++              held = arrived(seen[seen.length - 1]!) ? held + 1 : 0;
++              const elapsed = performance.now() - t0;
++              if (elapsed < 120_000 && (elapsed < 4000 || held < 3)) requestAnimationFrame(tick);
+               else {
+                 v.renderer.render = draw;
+                 resolve(seen);
+@@ -553,18 +562,18 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
+             };
+             requestAnimationFrame(tick);
+           }),
+-        [px],
++        [px, to] as const,
+       );
+     const emptyAfterFirst = (frames: { glyph: number; detail: number }[]): number[] => {
+       const first = frames.findIndex((f) => f.glyph > 0 || f.detail > 0);
+       return frames.flatMap((f, i) => (first >= 0 && i > first && f.glyph === 0 && f.detail === 0 ? [i] : []));
+     };
+-    const inward = await sample(at(150));
++    const inward = await sample(at(150), 'in');
+     expect(emptyAfterFirst(inward), 'frames with nothing drawn on the way in').toEqual([]);
+     expect(inward[inward.length - 1]).toMatchObject({ glyph: 0, level: 4 });
+     expect(inward[inward.length - 1]!.detail).toBeGreaterThan(0);
+     expect(inward[inward.length - 1]!.fade, 'faded in').toBe(1);
+-    const outward = await sample(at(50));
++    const outward = await sample(at(50), 'out');
+     expect(emptyAfterFirst(outward), 'frames with nothing drawn on the way out').toEqual([]);
+     expect(outward[outward.length - 1]).toMatchObject({ detail: 0, level: 3 });
+     expect(outward[outward.length - 1]!.glyph).toBeGreaterThan(0);
+diff --git a/e2e/wind-glyphs.spec.ts b/e2e/wind-glyphs.spec.ts
+index 8fe9dea..fdc0154 100644
+--- a/e2e/wind-glyphs.spec.ts
++++ b/e2e/wind-glyphs.spec.ts
+@@ -9,7 +9,9 @@
+  *     the screenshots go to the report (and to $WIND_GLYPH_SHOTS when it is set) for the docs gallery and for looking at
+  *   - eye level draws nothing and says why; going back draws again
+  *   - under a 4x CPU slowdown a rebuild stays in slices (p95 <= 12 ms, at most 4 slices) while the camera pans for 5 s, and five height
+- *     changes at a close zoom (the raster at half the model's spacing, filled in clocked slices) each finish in turn
++ *     changes at a close zoom (the raster at half the model's spacing, filled in clocked slices) each finish in turn. The slice times are wall-clock
++ *     times, which another process on the machine can stretch (the gate's full run read a p95 of 19.8 ms and a max of 114 ms): each of the two measures
++ *     is taken up to four times from an empty log and the best round counts, so only slices that are too long in every round fail it
+  *   - at the High tier with everything on: two more draw calls, 4 triangles a segment, the frame inside 550,000 triangles; off draws nothing extra
+  *     (at the closest zoom (0.6.0) the arrows and flow lines give way to the detailed streaks, one draw call: see wind-detail-render.spec.ts;
+  *     the Wind streaks switch, on by default, draws the same picture there, so the glyph switch alone no longer changes the draw calls at L4)
+@@ -299,44 +301,73 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
+     await drawAndRead(page);
+     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+     try {
++      // The slice times are wall-clock times of slices that the layer ends on its own clock, in a page whose main thread another process can take away for a few
++      // milliseconds or for a hundred: the gate's full run read a p95 of 19.8 ms and a max of 114 ms where this test alone reads 9.5 and 10.1 (and 11.6 and 18.8 in a run of
++      // two workers and a busy loop). That is the machine and not the layer, so each measure below is taken up to `ROUNDS` times, each time from an empty log (the layer
++      // keeps the times of its last 64 slices and has no way to empty them: the spec empties the ring), until a round's p95 is within the limit, and the best round is the
++      // answer: the way the perf unit tests of this repo (`timeIt`) treat a neighbour. A layer whose slices are too long fails every round.
++      const ROUNDS = 4;
++      const emptyLog = (): Promise<void> =>
++        page.evaluate(() => {
++          const log = (window as unknown as { __firesim: { view: { glyphs: { log: { n: number; at: number; slices: number; ms: number } } } } }).__firesim.view.glyphs.log;
++          log.n = 0;
++          log.at = 0;
++          log.slices = 0;
++          log.ms = 0;
++        });
+       // The drawing is skipped (the test browser's software GL draws a frame a second): the frame loop, the camera and the layer's
+       // rebuilds run at the display rate, as on a phone, and the 5 s of panning ask for a rebuild every time the gap allows.
+-      const r = await page.evaluate(
+-        (d) =>
+-          new Promise<{ rebuilds0: number; rebuilds1: number; frames: number; swapsAt: number[] }>((resolve) => {
+-            const v = (window as unknown as Handle).__firesim.view;
+-            const draw = v.renderer.render;
+-            v.renderer.render = () => undefined;
+-            const rebuilds0 = v.windGlyphStats!()!.rebuilds;
+-            const t0 = performance.now();
+-            let frames = 0;
+-            let seen = rebuilds0;
+-            const swapsAt: number[] = [];
+-            const tick = (now: number): void => {
+-              frames++;
+-              const rebuilds = v.windGlyphStats!()!.rebuilds;
+-              if (rebuilds !== seen) {
+-                seen = rebuilds;
+-                swapsAt.push(frames);
+-              }
+-              const a = (now - t0) / 500; // a circle of 1.4 km: about 47 m a frame, so a rebuild is due about as often as the 250 ms gap allows
+-              v.lookAt(1400 * Math.cos(a), 1400 * Math.sin(a), d, 200, 55, false);
+-              // 5 s of panning, and at least 30 frames of it (a shared machine can draw a frame a second): the slices are what is measured.
+-              if ((now - t0 < 5000 || frames < 30) && now - t0 < 90_000) requestAnimationFrame(tick);
+-              else {
+-                v.renderer.render = draw;
+-                resolve({ rebuilds0, rebuilds1: v.windGlyphStats!()!.rebuilds, frames, swapsAt });
+-              }
+-            };
+-            requestAnimationFrame(tick);
+-          }),
+-        2500,
+-      );
+-      const s = (await page.evaluate(() => (window as unknown as Handle).__firesim.view.windGlyphStats!()))!;
+-      console.log(`4x CPU: ${r.rebuilds1 - r.rebuilds0} rebuilds in ${r.frames} frames (swapped at frames ${r.swapsAt.join(', ')}), slice p95 ${s.sliceP95Ms.toFixed(2)} ms, max ${s.sliceMaxMs.toFixed(2)} ms, last ${s.slicesLast} slices, ${s.lastMs.toFixed(2)} ms`);
++      const panOnce = (): Promise<{ rebuilds0: number; rebuilds1: number; frames: number; swapsAt: number[] }> =>
++        page.evaluate(
++          (d) =>
++            new Promise<{ rebuilds0: number; rebuilds1: number; frames: number; swapsAt: number[] }>((resolve) => {
++              const v = (window as unknown as Handle).__firesim.view;
++              const draw = v.renderer.render;
++              v.renderer.render = () => undefined;
++              const rebuilds0 = v.windGlyphStats!()!.rebuilds;
++              const t0 = performance.now();
++              let frames = 0;
++              let seen = rebuilds0;
++              const swapsAt: number[] = [];
++              const tick = (now: number): void => {
++                frames++;
++                const rebuilds = v.windGlyphStats!()!.rebuilds;
++                if (rebuilds !== seen) {
++                  seen = rebuilds;
++                  swapsAt.push(frames);
++                }
++                const a = (now - t0) / 500; // a circle of 1.4 km: about 47 m a frame, so a rebuild is due about as often as the 250 ms gap allows
++                v.lookAt(1400 * Math.cos(a), 1400 * Math.sin(a), d, 200, 55, false);
++                // 5 s of panning, and at least 30 frames of it (a shared machine can draw a frame a second): the slices are what is measured.
++                if ((now - t0 < 5000 || frames < 30) && now - t0 < 90_000) requestAnimationFrame(tick);
++                else {
++                  v.renderer.render = draw;
++                  resolve({ rebuilds0, rebuilds1: v.windGlyphStats!()!.rebuilds, frames, swapsAt });
++                }
++              };
++              requestAnimationFrame(tick);
++            }),
++          2500,
++        );
++      const statsNow = (): Promise<Stats> => page.evaluate(() => (window as unknown as Handle).__firesim.view.windGlyphStats!()!);
++      let r = { rebuilds0: 0, rebuilds1: 0, frames: 0, swapsAt: [] as number[] };
++      let s = await statsNow();
++      const panP95s: number[] = [];
++      for (let round = 1; round <= ROUNDS; round++) {
++        await emptyLog();
++        const one = await panOnce();
++        const st = await statsNow();
++        panP95s.push(st.sliceP95Ms);
++        console.log(`4x CPU, round ${round}: ${one.rebuilds1 - one.rebuilds0} rebuilds in ${one.frames} frames (swapped at frames ${one.swapsAt.join(', ')}), slice p95 ${st.sliceP95Ms.toFixed(2)} ms, max ${st.sliceMaxMs.toFixed(2)} ms, last ${st.slicesLast} slices, ${st.lastMs.toFixed(2)} ms`);
++        if (round === 1 || st.sliceP95Ms < s.sliceP95Ms) {
++          r = one;
++          s = st;
++        }
++        if (st.sliceP95Ms <= 12) break;
++      }
+       // One slice a frame and at most four rebuilds a second: how many there are depends on how fast this machine draws a frame.
+       expect(r.rebuilds1 - r.rebuilds0, 'the pan made rebuilds').toBeGreaterThanOrEqual(3);
+-      expect(s.sliceP95Ms, 'p95 of a slice (ms)').toBeLessThanOrEqual(12);
++      expect(s.sliceP95Ms, `p95 of a slice (ms), the best of the rounds (${panP95s.map((x) => x.toFixed(1)).join(', ')})`).toBeLessThanOrEqual(12);
+       expect(s.slicesLast, 'slices of the last rebuild').toBeLessThanOrEqual(4);
+       expect(s.count).toBeGreaterThan(0);
+ 
+@@ -346,41 +377,56 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
+       const close = (s.cellM * h) / (2 * Math.tan((50 * Math.PI) / 360) * 90); // the camera distance at which a model cell is 90 px (the rig's field of view is 50)
+       await lookAt(page, close);
+       const heights: Height[] = [50, 300, 1000, 2000, 100];
+-      const f = await page.evaluate(
+-        (hs) =>
+-          new Promise<{ finished: number; frames: number }>((resolve) => {
+-            const v = (window as unknown as Handle).__firesim.view;
+-            const draw = v.renderer.render;
+-            v.renderer.render = () => undefined;
+-            const r0 = v.windGlyphStats!()!.rebuilds;
+-            let seen = r0;
+-            let i = 0;
+-            let frames = 0;
+-            v.setLayers({ windHeight: hs[0] });
+-            const tick = (): void => {
+-              frames++;
+-              const now = v.windGlyphStats!()!.rebuilds;
+-              if (now !== seen && i < hs.length) {
+-                seen = now;
+-                i++;
+-                if (i < hs.length) v.setLayers({ windHeight: hs[i] });
+-              }
+-              if (i >= hs.length || frames > 4000) {
+-                v.renderer.render = draw;
+-                resolve({ finished: seen - r0, frames });
+-              } else requestAnimationFrame(tick);
+-            };
+-            requestAnimationFrame(tick);
+-          }),
+-        heights,
+-      );
+-      const t = (await page.evaluate(() => (window as unknown as Handle).__firesim.view.windGlyphStats!()))!;
+-      console.log(`4x CPU, ${heights.length} height changes at ${t.cellPx.toFixed(0)} px a cell: ${f.finished} rebuilds in ${f.frames} frames, slice p95 ${t.sliceP95Ms.toFixed(2)} ms, max ${t.sliceMaxMs.toFixed(2)} ms`);
++      const changeHeights = (): Promise<{ finished: number; frames: number }> =>
++        page.evaluate(
++          (hs) =>
++            new Promise<{ finished: number; frames: number }>((resolve) => {
++              const v = (window as unknown as Handle).__firesim.view;
++              const draw = v.renderer.render;
++              v.renderer.render = () => undefined;
++              const r0 = v.windGlyphStats!()!.rebuilds;
++              let seen = r0;
++              let i = 0;
++              let frames = 0;
++              v.setLayers({ windHeight: hs[0] });
++              const tick = (): void => {
++                frames++;
++                const now = v.windGlyphStats!()!.rebuilds;
++                if (now !== seen && i < hs.length) {
++                  seen = now;
++                  i++;
++                  if (i < hs.length) v.setLayers({ windHeight: hs[i] });
++                }
++                if (i >= hs.length || frames > 4000) {
++                  v.renderer.render = draw;
++                  resolve({ finished: seen - r0, frames });
++                } else requestAnimationFrame(tick);
++              };
++              requestAnimationFrame(tick);
++            }),
++          heights,
++        );
++      let f = { finished: 0, frames: 0 };
++      let t = await statsNow();
++      const heightP95s: number[] = [];
++      for (let round = 1; round <= ROUNDS; round++) {
++        await emptyLog();
++        const one = await changeHeights();
++        const st = await statsNow();
++        heightP95s.push(st.sliceP95Ms);
++        console.log(`4x CPU, round ${round}, ${heights.length} height changes at ${st.cellPx.toFixed(0)} px a cell: ${one.finished} rebuilds in ${one.frames} frames, slice p95 ${st.sliceP95Ms.toFixed(2)} ms, max ${st.sliceMaxMs.toFixed(2)} ms`);
++        expect(one.finished, 'every height change finished its rebuild').toBe(heights.length);
++        if (round === 1 || st.sliceP95Ms < t.sliceP95Ms) {
++          f = one;
++          t = st;
++        }
++        if (st.sliceP95Ms <= 12) break;
++      }
+       expect(t.cellPx, 'a close zoom: the raster is at half spacing').toBeGreaterThan(60);
+       expect(f.finished, 'every height change finished its rebuild').toBe(heights.length);
+       expect(t.active).toBe(true);
+       expect(t.idle).toBeNull();
+-      expect(t.sliceP95Ms, 'p95 of a slice (ms), the raster fills included').toBeLessThanOrEqual(12);
++      expect(t.sliceP95Ms, `p95 of a slice (ms), the raster fills included, the best of the rounds (${heightP95s.map((x) => x.toFixed(1)).join(', ')})`).toBeLessThanOrEqual(12);
+     } finally {
+       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+     }
+
+From 12b2f05f05e20c78189b2b92ba7f5d2bb40ecb08 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 09:43:31 +0000
+Subject: [PATCH 4/5] air-slice spec: the layoutSettled comment says what was
+ reproduced and what was not
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ e2e/air-slice.spec.ts | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/e2e/air-slice.spec.ts b/e2e/air-slice.spec.ts
+index 817e39f..4e36000 100644
+--- a/e2e/air-slice.spec.ts
++++ b/e2e/air-slice.spec.ts
+@@ -216,13 +216,13 @@ const blockBoxes = (
+ /**
+  * Resolves when the tool's layout is the layout it is going to stay in: the panel has drawn the scene's own latest slice (its canvas carries the slice's number) and
+  * every box the layout checks read has been the same in four display frames in a row. The panel lays a slice out in the display frame after the one that made it
+- * (`setData` only notes it, so that the update that places a line stays short), the height of its picture is part of that layout, and a window that has changed size
+- * reaches the page's observers in a frame of its own (`.dock` also changes its height with a 200 ms CSS transition, which a page only advances on a frame). Where the
+- * frames are seconds apart (the software GL beside another browser: 2 to 4 s between frames in a run of two workers and a busy loop, measured in pace.spec.ts's run) a
+- * read made a fixed time after a change reads the layout from before it, and that is what the gate's full run looks like it read here: Set start's bottom at 753 against
+- * a pinned footer at 726, and at 844 x 390 a body of 158 px where the same flow alone reads 190. (Neither was reproduced: the one run of this flow beside two workers and a
+- * busy loop never reached the step, see the report; the same lag was reproduced and measured for the view's size in layers.spec.ts.) Waits for as many frames as that
+- * takes (at most `maxMs`) and returns how many that was.
++ * (`setData` only notes it, so that the update that places a line stays short), and the height of its picture is part of that layout; a window that has changed size
++ * reaches the page's observers in a frame of its own too. Where the frames are seconds apart (the software GL beside another browser) a read made a fixed time after a
++ * change reads the layout from before it. That is the failure of the gate's full run in step 7 (Set start's bottom at 753 against a pinned footer at 726), reproduced
++ * under two workers and two busy loops: at the read the scene had slice 7 and the panel had drawn slice 6, its picture 227 px tall; 0.4 s later the panel had slice 7
++ * and the picture 159 px (and in the other run of the pair, which read after the panel had caught up, Set start's bottom was at 685). The 844 x 390 audit of the recording test (12 controls missing 3 of 8 probes in the gate, with the body 158 px
++ * where a run alone reads 190) was not reproduced in two runs of the same load, which read a body of 158 px and no misses: that read is taken here too on a layout that
++ * has stopped moving, which is the cause suspected for it. Waits for as many frames as that takes (at most `maxMs`) and returns how many that was.
+  */
+ const layoutSettled = (page: Page, maxMs = 90_000): Promise<number> =>
+   page.evaluate(
+
+From 96a4b4dea2bc89c8b233357a4a6699f21ea658b8 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 09:43:41 +0000
+Subject: [PATCH 5/5] layers spec: say what the reproduction read
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ e2e/layers.spec.ts | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/e2e/layers.spec.ts b/e2e/layers.spec.ts
+index 35c0b7e..cf697a1 100644
+--- a/e2e/layers.spec.ts
++++ b/e2e/layers.spec.ts
+@@ -429,8 +429,9 @@ test('Arrows and flow lines on the real layer: the map legend, and the caption a
+   // (the unit test holds the arithmetic; this reads what the real layer says, once the view has taken the new size).
+   await page.setViewportSize({ width: 844, height: 390 });
+   // The view takes a new size in the page's next rendering step (a ResizeObserver), and on a machine that draws a frame a second that is not 1 s away: the gate's
+-  // full run read 6.48 px a cell at the farthest zoom here, the camera still of the portrait size, where this machine alone reads 2.91. So wait for the state, the
+-  // drawing buffer of the canvas having the shape of its box (the renderer and the camera were told the size together), and not for a time.
++  // full run read 6.48 px a cell at the farthest zoom here, the camera still of the portrait size, where this machine alone reads 2.91, and so did a run of two
++  // workers and a busy loop (the canvas's drawing buffer 515 x 1018 for the 844 x 366 box 1.6 s after the resize, 1055 x 457 three seconds later). So wait for the state,
++  // the drawing buffer of the canvas having the shape of its box (the renderer and the camera were told the size together), and not for a time.
+   await expect
+     .poll(
+       () =>

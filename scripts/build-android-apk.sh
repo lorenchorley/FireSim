@@ -33,5 +33,9 @@ printf 'sdk.dir=%s\n' "$ANDROID_HOME" > android/local.properties
 # Google's mirror first: https://maven-central.storage-download.googleapis.com/maven2/
 (cd android && ./gradlew assembleDebug --no-daemon --console=plain)
 
+# Read the desktop link's settings (cleartext rule, mixed-content switch, https scheme) back out of the APK: fails the build
+# if a manifest merge or a sync dropped one. Needs aapt2 from the build-tools installed above.
+node scripts/check-android-apk.mjs --aapt2 "$ANDROID_HOME/build-tools/36.0.0/aapt2"
+
 echo
 echo "APK: android/app/build/outputs/apk/debug/app-debug.apk"

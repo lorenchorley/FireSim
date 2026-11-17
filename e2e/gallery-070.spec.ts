@@ -67,12 +67,29 @@ type Handle = {
     };
   };
 };
-const setLayers = (page: Page, patch: Record<string, unknown>): Promise<void> =>
-  page.evaluate((p) => {
+/**
+ * Waits for the software GL to draw what the page has given it, and says so when that took seconds. `renderNow` only queues a frame: beside another browser (two workers and
+ * a busy loop) the queue held 5 to 29 s of drawing at a time (the read below took that long, in 4 runs of this test), and in the run that did not wait for it a screenshot
+ * waited for its frame past its 45 s ("page.screenshot: Timeout 45000ms exceeded"). A read of one pixel is the call that waits for the queue (`finish()` only flushes in Chromium).
+ */
+async function glDrained(page: Page): Promise<number> {
+  const ms = await page.evaluate(() => {
+    const gl = (window as unknown as { __firesim: { view: { renderer: { getContext(): { RGBA: number; UNSIGNED_BYTE: number; readPixels(x: number, y: number, w: number, h: number, f: number, t: number, out: Uint8Array): void } } } } }).__firesim.view.renderer.getContext();
+    const t0 = performance.now();
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    return Math.round(performance.now() - t0);
+  });
+  if (ms >= 5000) console.log(`[gallery] the GL took ${(ms / 1000).toFixed(1)} s to draw what was queued`);
+  return ms;
+}
+const setLayers = async (page: Page, patch: Record<string, unknown>): Promise<void> => {
+  await page.evaluate((p) => {
     const v = (window as unknown as Handle).__firesim.view;
     v.setLayers(p);
     v.renderNow?.();
   }, patch);
+  await glDrained(page);
+};
 const airKindOf = (page: Page): Promise<string | null> =>
   page.evaluate(() => {
     const a = (window as unknown as Handle).__firesim.session.state.get().snapshot?.atmosphere;
@@ -130,11 +147,13 @@ async function draw(page: Page): Promise<NonNullable<ReturnType<NonNullable<View
     for (let i = 0; i < 100; i++) v.rig.update(t0 + i * 16);
   });
   await page.waitForTimeout(300);
-  return page.evaluate(() => {
+  const stats = await page.evaluate(() => {
     const v = (window as unknown as Handle).__firesim.view;
     v.renderNow?.();
     return v.windGlyphStats!()!;
   });
+  await glDrained(page);
+  return stats;
 }
 const look = (page: Page, x: number, y: number, d: number, tilt: number, az: number): Promise<void> =>
   page.evaluate(([px, py, pd, pt, pa]) => (window as unknown as Handle).__firesim.view.lookAt(px!, py!, pd!, pa!, pt!, false), [x, y, d, tilt, az]);
@@ -327,8 +346,20 @@ test('gallery 0.7.0: the detailed streaks round the crowns, the Wind detail shee
   // 47: the same sheet after a few seconds without a touch (the limit is 3 s from here; the shared fixture sets it to never). A pointer move wakes the
   // view and starts the count; the sheet repaints in place, and the picture is taken when it says so.
   await page.evaluate(() => (window as unknown as Handle).__firesim.view.activity.setLimit(3000));
+  // The view pauses in a frame of its own loop (the idle clock is read there), and `SceneView.frame` counts a frame that comes more than 5 s after the one before as the
+  // page having been in the background and starts the idle clock again (`STALL_MS`). Beside another browser (two workers and a busy loop) every frame of the High picture
+  // over the forest is drawn by the software GL in 8 to 21 s, the page's animation frames come that far apart with the main thread idle (measured from the touch for 202 s,
+  // the pause not seen: 24 animation frames, 18 of them more than 5 s after the one before, long tasks 1.5 s in all, the idle clock true between the frames and false again in
+  // each), and the pause is reached only by a frame that comes within 5 s of the one before: it was seen 14 s after the touch in two runs and not within 240 s in three. A wait cannot
+  // help while the frames are what keeps the clock from running, so the drawing is skipped for the wait (as pace.spec.ts does; the loop, the clock and the layer run as they
+  // do, and the picture on the canvas is the last one drawn, which is what a paused view shows). The pause is the app's own, read from its own sheet.
+  await page.evaluate(() => {
+    (window as unknown as { __firesim: { view: { renderer: { render: () => void } } } }).__firesim.view.renderer.render = () => undefined;
+  });
+  const touched = Date.now();
   await page.mouse.move(200, 250);
-  await expect(sheet).toContainText('paused to save battery', { timeout: 30_000 });
+  await expect(sheet).toContainText('paused to save battery', { timeout: 120_000 });
+  console.log(`[gallery] the sheet said paused ${((Date.now() - touched) / 1000).toFixed(1)} s after the touch`);
   await shot(page, '47-wind-streaks-paused');
 });
 

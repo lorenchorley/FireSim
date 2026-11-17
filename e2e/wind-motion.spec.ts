@@ -205,6 +205,11 @@ test('idle stop: hands off, the view holds still and stops drawing; a touch, a l
     const t0 = await clock(page);
     await page.waitForTimeout(1500);
     expect(await clock(page), 'the shader clock does not move').toBe(t0);
+    // A frame drawn by hand settles the forest first (it places the trees and builds the buffers in one go, where the loop does one step a frame), and the
+    // forest's placement can still be unfinished when the view holds still on the slow software GL (measured: `vegetation.placing` true before the first
+    // picture and false after it, the shader clock the same throughout, in 1 of 15 and 1 of 20 repeats; the first picture then differed from the second all
+    // over, the canopy included). Unfinished work is not an ambient animation, so that settling picture is drawn and left out; the two that follow are compared.
+    await shot(page);
     const a = await shot(page);
     await page.waitForTimeout(1000);
     const b = await shot(page);

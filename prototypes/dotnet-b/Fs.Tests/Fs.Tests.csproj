@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Fs.Tests (plan T0.4): MSTest on Microsoft.Testing.Platform (the runner is selected in global.json, so `dotnet test` runs in native MTP mode).
+         dotnet test (flag: project) Fs.Tests          or          dotnet test (flag: solution) FsProto.slnx
+       Not a solver project: the banned-API rules and FS0001 do not apply here (tests call Math freely).
+       Holds: the smoke test, the tests of the FS0001 analyzer, and the tests that BannedSymbols.txt is complete and bans what it should;
+       from T0.5 also TestApp/: the tests of Fs.TestApp.Core (gating, the 6 KB address cap, idempotency, retry, schema) and the dry-run scenarios. -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <EnableMSTestRunner>true</EnableMSTestRunner>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="4.5.3" />
+    <!-- to compile snippets in process and run the analyzers over them; the same Roslyn API version as Fs.Analyzers -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+    <!-- T1.4b: BannedSymbolsTests compile snippets that call TensorPrimitives to prove the ban. Fs.Kernel used to bring this assembly along (the K1 salvage used it); it no longer does, so the test project asks for it itself. Never referenced by solver code. -->
+    <PackageReference Include="System.Numerics.Tensors" Version="11.0.0" />
+    <!-- only to find the real BannedApiAnalyzers assembly (GeneratePathProperty) and copy it next to the tests: it must not analyze this project -->
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" ExcludeAssets="all" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fs.Kernel\Fs.Kernel.csproj" />
+    <ProjectReference Include="..\Fs.Analyzers\Fs.Analyzers.csproj" />
+    <!-- T0.5: the test app's Android-free core and the container dry run (the tests run its scenarios) -->
+    <ProjectReference Include="..\Fs.TestApp.Core\Fs.TestApp.Core.csproj" />
+    <ProjectReference Include="..\Fs.TestApp.DryRun\Fs.TestApp.DryRun.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\BannedSymbols.txt" Link="BannedSymbols.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- T1.3: the FsMath golden file (Node 22's bits and the correctly rounded results); Fs.Bench/fsmath/gen-golden.mjs and cr-reference.py write it -->
+    <None Include="golden\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(PkgMicrosoft_CodeAnalysis_BannedApiAnalyzers)\analyzers\dotnet\cs\*.dll" Link="banned-api-analyzers\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

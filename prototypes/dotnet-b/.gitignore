@@ -1,0 +1,6 @@
+bin/
+obj/
+fixtures/
+*.user
+.vs/
+.bdn/

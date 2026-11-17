@@ -6,6 +6,7 @@
  * they are configuration-like (service limits, table data) so the whole module can be tuned from one place; the tag
  * in each comment says which is which.
  */
+import type { DesktopDetailLevel } from '../core/types';
 import { DEMO_EXTENT_M } from '../data/demoSites';
 
 export const SCENARIO_PARAMS = Object.freeze({
@@ -21,6 +22,15 @@ export const SCENARIO_PARAMS = Object.freeze({
   fireCellM: 30,
   highDetailCellM: 20,
   highDetailMaxExtentM: 6000,
+  /**
+   * Desktop detail (0.9.0, D35; plan 15e "Measured"): the fire cell (m) of each finer level, for any extent up to `desktopDetailMaxExtentM`. Both
+   * are whole multiples of `hiResCellM`, so no new elevation grid is needed. 20 m and 10 m are the two cells 15e measured (15 m would need a 5 m
+   * elevation grid); the spread formulas were calibrated at 20 and 30 m, so a finer grid is a different model setting, not a more accurate one,
+   * and every result says so. [H]
+   */
+  desktopDetailCellM: Object.freeze({ finer: 20, finest: 10 }) as Readonly<Record<DesktopDetailLevel, number>>,
+  /** The largest square (m) a finer desktop level is built for: the Setup areas (3, 6, 9 km) are what 15e measured (10 m over 9 km: 1.9 GB peak, 39 MB a snapshot); nothing larger was run. [H] */
+  desktopDetailMaxExtentM: 9000,
   /** Sub-cell slope above which a 10 m cell counts as cliff (Terrain.cliffFraction contract). [D] */
   cliffSlopeDeg: 60,
   /** Percentile of the 10 m sub-cell slopes reported as slopeP90Deg. [D] */
@@ -203,10 +213,12 @@ export const demoAnnualRainfall = (siteId: string | undefined): number | undefin
  * was asked for (a requested cell of 20 m or less, or the High tier) AND the extent is at most 6 km; otherwise 30 m. Any
  * other requested size (e.g. 40 m) builds 30 m cells: the engine's calibrations (level-set viscosity, VLS slope
  * thresholds, landform classes, ember emission per cell) are made and tested at 20-30 m (spec §2.1). `coarsened` says
- * that High detail was asked for but the area is too large for it.
+ * that High detail was asked for but the area is too large for it. `desktopDetail` (0.9.0) overrides all of that with the level's own cell.
  */
-export function builtFireCell(extentM: number, requestedCellM?: number, tier?: string): { cellM: number; coarsened: boolean } {
+export function builtFireCell(extentM: number, requestedCellM?: number, tier?: string, desktopDetail?: DesktopDetailLevel): { cellM: number; coarsened: boolean } {
   const P = SCENARIO_PARAMS;
+  // The desktop's finer levels (0.9.0) set the cell themselves, at any extent the builder accepts for them; with none the rules below are exactly 0.8.0's.
+  if (desktopDetail) return { cellM: P.desktopDetailCellM[desktopDetail], coarsened: false };
   const wantsHigh = (requestedCellM !== undefined && requestedCellM <= P.highDetailCellM) || tier === 'high';
   if (!wantsHigh) return { cellM: P.fireCellM, coarsened: false };
   return extentM <= P.highDetailMaxExtentM ? { cellM: P.highDetailCellM, coarsened: false } : { cellM: P.fireCellM, coarsened: true };

@@ -15,7 +15,7 @@ vi.mock('node:crypto', async (importOriginal) => {
   };
 });
 
-import { addressKey, allowedHostNames, CODE_ALPHABET, CODE_LENGTH, codesMatch, FixedWindowCounter, generateCode, hostAllowed, normaliseCode, normaliseHostName, originAllowed, RateLimiter } from './security';
+import { addressKey, allowedHostNames, APP_ORIGINS, CODE_ALPHABET, CODE_LENGTH, codesMatch, FixedWindowCounter, generateCode, hostAllowed, listedOrigin, normaliseCode, normaliseHostName, normaliseOrigin, originAllowed, RateLimiter } from './security';
 
 describe('pairing code', () => {
   it('is 8 characters of the alphabet without I, O, 0 and 1, from the random source', () => {
@@ -88,6 +88,61 @@ describe('origin check', () => {
     }
     expect(originAllowed('http://192.168.1.20:4300', undefined)).toBe(false);
     expect(originAllowed('http://192.168.1.20:4300', '')).toBe(false);
+  });
+});
+
+describe('origins the owner lists (--allow-origin, --allow-app)', () => {
+  it('--allow-app is the Android and the iOS origin, exactly', () => {
+    expect(APP_ORIGINS).toEqual(['https://localhost', 'capacitor://localhost']);
+  });
+
+  it('writes an origin the way a browser does: lower case, no default port, an IPv6 address compressed; null for anything that is not exactly scheme://host[:port]', () => {
+    const ok: [string, string][] = [
+      ['https://localhost', 'https://localhost'],
+      ['capacitor://localhost', 'capacitor://localhost'],
+      ['HTTPS://LocalHost', 'https://localhost'],
+      ['http://192.168.1.20:4300', 'http://192.168.1.20:4300'],
+      ['http://192.168.1.20:80', 'http://192.168.1.20'],
+      ['https://desk.example:443', 'https://desk.example'],
+      ['https://desk.example:8443', 'https://desk.example:8443'],
+      ['http://localhost:4173', 'http://localhost:4173'],
+      ['http://[::1]:4173', 'http://[::1]:4173'],
+      ['http://[0:0:0:0:0:0:0:1]:4173', 'http://[::1]:4173'],
+      ['http://[FD00::5]', 'http://[fd00::5]'],
+      ['  https://localhost  ', 'https://localhost'],
+    ];
+    for (const [given, written] of ok) expect(normaliseOrigin(given), given).toBe(written);
+    const bad = ['*', 'null', '', 'localhost', '//localhost', 'https://', 'https://localhost/', 'https://localhost/app', 'https://localhost?x=1', 'https://localhost#x', 'https://user@localhost', 'https://user:pw@localhost', 'https://local host', 'https://*.example', 'https://localhost:0', 'https://localhost:65536', 'https://localhost:99999', 'https://localhost:', 'ftp://localhost', 'file://', 'file:///tmp', 'ws://localhost', 'javascript://localhost', 'data:text/html,x', 'http://[not:ipv6]', 'http://[::1', 'http://-bad.example', 'x'.repeat(400), 5, null, undefined, {}, ['https://localhost']];
+    for (const given of bad) expect(normaliseOrigin(given), String(given)).toBeNull();
+  });
+
+  const apps = ['https://localhost', 'capacitor://localhost', 'http://192.168.1.50:4173'];
+  const host = '192.168.1.20:4300';
+
+  it('accepts the page of a listed origin (in the case a browser writes it, or not) as well as the host\'s own page and a client with no Origin', () => {
+    for (const origin of ['https://localhost', 'capacitor://localhost', 'http://192.168.1.50:4173', 'HTTPS://LOCALHOST', 'https://localhost:443']) expect(originAllowed(origin, host, apps), origin).toBe(true);
+    expect(originAllowed('http://192.168.1.20:4300', host, apps)).toBe(true);
+    expect(originAllowed(undefined, host, apps)).toBe(true);
+    expect(originAllowed('https://localhost', undefined, apps)).toBe(true); // a listed origin does not depend on the Host header (the Host check is made on its own, before)
+  });
+
+  it('refuses every origin that is not listed and not the host\'s own: another port, another scheme, a name that merely starts or ends like a listed one, null, a file', () => {
+    for (const origin of ['http://localhost', 'https://localhost:8443', 'https://localhost.evil.example', 'https://evil.example/https://localhost', 'https://xlocalhost', 'capacitor://localhost:80', 'capacitor://evil', 'ionic://localhost', 'http://192.168.1.50', 'http://192.168.1.50:4174', 'https://192.168.1.50:4173', 'null', 'file://', '', 'https://localhost/', 'https://user@localhost', '*']) {
+      expect(originAllowed(origin, host, apps), origin).toBe(false);
+    }
+  });
+
+  it('lists nothing by default: the app origins are refused unless the owner asks for them', () => {
+    expect(originAllowed('https://localhost', host)).toBe(false);
+    expect(originAllowed('capacitor://localhost', host, [])).toBe(false);
+  });
+
+  it('gives back the listed origin for Access-Control-Allow-Origin, and nothing for any other (never a wildcard)', () => {
+    expect(listedOrigin('https://localhost', apps)).toBe('https://localhost');
+    expect(listedOrigin('HTTPS://localhost:443', apps)).toBe('https://localhost');
+    expect(listedOrigin('capacitor://localhost', apps)).toBe('capacitor://localhost');
+    for (const origin of [undefined, '', 'null', 'https://evil.example', 'http://localhost', '*']) expect(listedOrigin(origin, apps), String(origin)).toBeNull();
+    expect(listedOrigin('https://localhost', [])).toBeNull();
   });
 });
 

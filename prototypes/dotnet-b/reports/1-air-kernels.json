@@ -1,0 +1,1697 @@
+{
+  "stage": "1-air-kernels",
+  "when": "2026-11-16T18:19:32Z",
+  "machine": {
+    "label": "container",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "os": "Ubuntu 24.04.5 LTS",
+    "runtime": ".NET 11.0.0",
+    "vector128Accelerated": true,
+    "vector256Accelerated": true,
+    "vector512Accelerated": true,
+    "node": "v22.22.0",
+    "v8": "12.4.254.21-node.33",
+    "bdnVersion": "0.16.0-preview.2",
+    "bdnHost": {
+      "BenchmarkDotNetCaption": "BenchmarkDotNet",
+      "BenchmarkDotNetVersion": "0.16.0-preview.2",
+      "OsVersion": "Linux Ubuntu 24.04.5 LTS (Noble Numbat)",
+      "ProcessorName": "Intel Xeon Processor 2.10GHz",
+      "PhysicalProcessorCount": 1,
+      "PhysicalCoreCount": 4,
+      "LogicalCoreCount": 4,
+      "RuntimeVersion": ".NET 11.0.0 (11.0.0, 11.0.26.53018)",
+      "Architecture": "X64",
+      "HasAttachedDebugger": false,
+      "HasRyuJit": true,
+      "Configuration": "RELEASE",
+      "DotNetCliVersion": "11.0.100",
+      "ChronometerFrequency": {
+        "Hertz": 1000000000
+      },
+      "HardwareTimerKind": "Unknown"
+    }
+  },
+  "indicative": true,
+  "kernels": "EllipticSolver.relax, gradient, divergence (src/atmosphere/solver.ts) and dynamics.advect (src/atmosphere/dynamics.ts) on the real state of the standard tier at 900 s (Fs.Bench/ts/air/capture.ts)",
+  "runs": [
+    {
+      "name": "air advect Scalar [fx-k3std]",
+      "impl": "cs-scalar",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "advect",
+      "n": 52,
+      "medianMs": 1.63564973828125,
+      "meanMs": 1.6361232409104567,
+      "stdDevMs": 0.06723608742252753,
+      "p95Ms": 1.7438952351562498,
+      "minMs": 1.526590162109375,
+      "maxMs": 1.778428896484375,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.106990058827156,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air advect Vector [fx-k3std]",
+      "impl": "cs-vector",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "advect",
+      "n": 56,
+      "medianMs": 1.4674193720703126,
+      "meanMs": 1.469847522391183,
+      "stdDevMs": 0.06224343154257341,
+      "p95Ms": 1.5725795131835938,
+      "minMs": 1.359168935546875,
+      "maxMs": 1.5919235,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.2338994799053427,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air advect Parallel4 [fx-k3std]",
+      "impl": "cs-parallel4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k3std",
+      "kernel": "advect",
+      "n": 80,
+      "medianMs": 0.9070530537109375,
+      "meanMs": 0.9119964366333008,
+      "stdDevMs": 0.04739580887155743,
+      "p95Ms": 0.9945629075683593,
+      "minMs": 0.8044503916015625,
+      "maxMs": 1.004989845703125,
+      "allocatedBytesPerOp": 8071,
+      "speedupVsTs": 1.9961875356605172,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air advect ParallelVector4 [fx-k3std]",
+      "impl": "cs-parallelvector4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k3std",
+      "kernel": "advect",
+      "n": 94,
+      "medianMs": 0.7407598149414063,
+      "meanMs": 0.7369974206179355,
+      "stdDevMs": 0.05009418919443071,
+      "p95Ms": 0.8164970501464843,
+      "minMs": 0.626997396484375,
+      "maxMs": 0.8860547890625,
+      "allocatedBytesPerOp": 8096,
+      "speedupVsTs": 2.4443118585527004,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air advect Scalar [fx-k6high]",
+      "impl": "cs-scalar",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "advect",
+      "n": 47,
+      "medianMs": 7.2922841796875,
+      "meanMs": 7.376478791389627,
+      "stdDevMs": 0.28399825681838775,
+      "p95Ms": 7.866558241406251,
+      "minMs": 7.0065103359375,
+      "maxMs": 7.977177734375,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.1842320989155533,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air advect Vector [fx-k6high]",
+      "impl": "cs-vector",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "advect",
+      "n": 14,
+      "medianMs": 6.38376844921875,
+      "meanMs": 6.3947445859375,
+      "stdDevMs": 0.049794694070692536,
+      "p95Ms": 6.483012138671875,
+      "minMs": 6.3101820546875,
+      "maxMs": 6.4908954453125,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.3527678938694687,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air advect Parallel4 [fx-k6high]",
+      "impl": "cs-parallel4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k6high",
+      "kernel": "advect",
+      "n": 66,
+      "medianMs": 3.5237644296875,
+      "meanMs": 3.556256939571496,
+      "stdDevMs": 0.16577217238181485,
+      "p95Ms": 3.847169265625,
+      "minMs": 3.25520559375,
+      "maxMs": 3.94169332421875,
+      "allocatedBytesPerOp": 8325,
+      "speedupVsTs": 2.450719159102773,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air advect ParallelVector4 [fx-k6high]",
+      "impl": "cs-parallelvector4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k6high",
+      "kernel": "advect",
+      "n": 56,
+      "medianMs": 3.165419869140625,
+      "meanMs": 3.1635174169224327,
+      "stdDevMs": 0.13588203587661313,
+      "p95Ms": 3.3698698408203125,
+      "minMs": 2.8684099609375,
+      "maxMs": 3.51425243359375,
+      "allocatedBytesPerOp": 8406,
+      "speedupVsTs": 2.7281553022994456,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF32 Scalar [fx-k3std]",
+      "impl": "cs-scalar",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "divergenceF32",
+      "n": 84,
+      "medianMs": 0.17409196630859375,
+      "meanMs": 0.17675512922014508,
+      "stdDevMs": 0.009433340709479435,
+      "p95Ms": 0.19418021738281246,
+      "minMs": 0.16415385522460937,
+      "maxMs": 0.20364481176757812,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.4651796140168654,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF32 Vector [fx-k3std]",
+      "impl": "cs-vector",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "divergenceF32",
+      "n": 81,
+      "medianMs": 0.13363341284179686,
+      "meanMs": 0.1342587139998071,
+      "stdDevMs": 0.007027799743011932,
+      "p95Ms": 0.14842563818359375,
+      "minMs": 0.12272866577148438,
+      "maxMs": 0.15184098876953125,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.9087741199982415,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF32 Parallel4 [fx-k3std]",
+      "impl": "cs-parallel4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k3std",
+      "kernel": "divergenceF32",
+      "n": 93,
+      "medianMs": 0.12287376513671874,
+      "meanMs": 0.12306277354250672,
+      "stdDevMs": 0.010247150208832682,
+      "p95Ms": 0.14210153198242184,
+      "minMs": 0.0988434296875,
+      "maxMs": 0.14944913891601563,
+      "allocatedBytesPerOp": 4022,
+      "speedupVsTs": 2.0759191330683606,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF32 ParallelVector4 [fx-k3std]",
+      "impl": "cs-parallelvector4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k3std",
+      "kernel": "divergenceF32",
+      "n": 92,
+      "medianMs": 0.10076505096435547,
+      "meanMs": 0.10077786431619395,
+      "stdDevMs": 0.007597856590649847,
+      "p95Ms": 0.1149471416442871,
+      "minMs": 0.08645130859375,
+      "maxMs": 0.12158158361816407,
+      "allocatedBytesPerOp": 4020,
+      "speedupVsTs": 2.531393549234574,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF32 Scalar [fx-k6high]",
+      "impl": "cs-scalar",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "divergenceF32",
+      "n": 58,
+      "medianMs": 0.827356998046875,
+      "meanMs": 0.834861232421875,
+      "stdDevMs": 0.03624401805538573,
+      "p95Ms": 0.8919890632812499,
+      "minMs": 0.77944957421875,
+      "maxMs": 0.93402594921875,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.4763046700316143,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF32 Vector [fx-k6high]",
+      "impl": "cs-vector",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "divergenceF32",
+      "n": 15,
+      "medianMs": 0.614006203125,
+      "meanMs": 0.6148675179036459,
+      "stdDevMs": 0.009386062696369987,
+      "p95Ms": 0.6290759796875001,
+      "minMs": 0.5955161806640625,
+      "maxMs": 0.6294862001953125,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.989281205602541,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF32 Parallel4 [fx-k6high]",
+      "impl": "cs-parallel4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k6high",
+      "kernel": "divergenceF32",
+      "n": 98,
+      "medianMs": 0.5100753920898438,
+      "meanMs": 0.5138495816924425,
+      "stdDevMs": 0.03921100000563866,
+      "p95Ms": 0.5947496228515624,
+      "minMs": 0.44890183984375,
+      "maxMs": 0.6118321630859375,
+      "allocatedBytesPerOp": 4051,
+      "speedupVsTs": 2.394608755767614,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF32 ParallelVector4 [fx-k6high]",
+      "impl": "cs-parallelvector4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k6high",
+      "kernel": "divergenceF32",
+      "n": 70,
+      "medianMs": 0.41351247265625,
+      "meanMs": 0.4125766366629464,
+      "stdDevMs": 0.020033854267363257,
+      "p95Ms": 0.4437440779296875,
+      "minMs": 0.35827692138671874,
+      "maxMs": 0.4621306240234375,
+      "allocatedBytesPerOp": 4023,
+      "speedupVsTs": 2.9537948206348434,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF64 Scalar [fx-k3std]",
+      "impl": "cs-scalar",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "divergenceF64",
+      "n": 78,
+      "medianMs": 0.15765601428222656,
+      "meanMs": 0.15967302166591546,
+      "stdDevMs": 0.008223689557561606,
+      "p95Ms": 0.17640416677246093,
+      "minMs": 0.14696241259765624,
+      "maxMs": 0.1833251545410156,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.7806425037329705,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF64 Vector [fx-k3std]",
+      "impl": "cs-vector",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "divergenceF64",
+      "n": 94,
+      "medianMs": 0.14018030261230469,
+      "meanMs": 0.14281967778891705,
+      "stdDevMs": 0.01090903676980741,
+      "p95Ms": 0.16672245012207032,
+      "minMs": 0.12781459399414064,
+      "maxMs": 0.17097417065429688,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 2.0026280067070075,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF64 Parallel4 [fx-k3std]",
+      "impl": "cs-parallel4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k3std",
+      "kernel": "divergenceF64",
+      "n": 97,
+      "medianMs": 0.15453076977539063,
+      "meanMs": 0.156020923128423,
+      "stdDevMs": 0.016385435384271976,
+      "p95Ms": 0.18512618955078125,
+      "minMs": 0.12280100952148437,
+      "maxMs": 0.19450899755859374,
+      "allocatedBytesPerOp": 3979,
+      "speedupVsTs": 1.8166543815714014,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF64 ParallelVector4 [fx-k3std]",
+      "impl": "cs-parallelvector4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k3std",
+      "kernel": "divergenceF64",
+      "n": 100,
+      "medianMs": 0.13047027099609376,
+      "meanMs": 0.12978660230957031,
+      "stdDevMs": 0.022754316901768212,
+      "p95Ms": 0.16181386932373046,
+      "minMs": 0.0835504267578125,
+      "maxMs": 0.17697394360351562,
+      "allocatedBytesPerOp": 3977,
+      "speedupVsTs": 2.1516702453118213,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF64 Scalar [fx-k6high]",
+      "impl": "cs-scalar",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "divergenceF64",
+      "n": 89,
+      "medianMs": 0.8031039091796875,
+      "meanMs": 0.8166656690769838,
+      "stdDevMs": 0.07418484650093397,
+      "p95Ms": 0.995412371875,
+      "minMs": 0.725463126953125,
+      "maxMs": 1.0457328212890624,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.718929498686574,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF64 Vector [fx-k6high]",
+      "impl": "cs-vector",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "divergenceF64",
+      "n": 100,
+      "medianMs": 0.74353298046875,
+      "meanMs": 0.7648729521191406,
+      "stdDevMs": 0.14199165346735818,
+      "p95Ms": 1.0687664985839844,
+      "minMs": 0.601957185546875,
+      "maxMs": 1.15213333984375,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.8566479715925504,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF64 Parallel4 [fx-k6high]",
+      "impl": "cs-parallel4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k6high",
+      "kernel": "divergenceF64",
+      "n": 100,
+      "medianMs": 0.6965611591796875,
+      "meanMs": 0.6775591265332032,
+      "stdDevMs": 0.1181274293122868,
+      "p95Ms": 0.8341179751953125,
+      "minMs": 0.431903140625,
+      "maxMs": 0.9506020126953125,
+      "allocatedBytesPerOp": 3866,
+      "speedupVsTs": 1.9818489472269796,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air divergenceF64 ParallelVector4 [fx-k6high]",
+      "impl": "cs-parallelvector4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k6high",
+      "kernel": "divergenceF64",
+      "n": 100,
+      "medianMs": 0.5336681337890625,
+      "meanMs": 0.5335705745898437,
+      "stdDevMs": 0.06287588797750472,
+      "p95Ms": 0.6307921508789063,
+      "minMs": 0.414107919921875,
+      "maxMs": 0.688245146484375,
+      "allocatedBytesPerOp": 3793,
+      "speedupVsTs": 2.586774275237344,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air gradient Scalar [fx-k3std]",
+      "impl": "cs-scalar",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "gradient",
+      "n": 97,
+      "medianMs": 0.1739830693359375,
+      "meanMs": 0.18118262141088112,
+      "stdDevMs": 0.028543532994931623,
+      "p95Ms": 0.23728037963867188,
+      "minMs": 0.14934207055664062,
+      "maxMs": 0.2593277314453125,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.3890489512749378,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air gradient Vector [fx-k3std]",
+      "impl": "cs-vector",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "gradient",
+      "n": 99,
+      "medianMs": 0.1562223408203125,
+      "meanMs": 0.16195958221867107,
+      "stdDevMs": 0.022614867860097625,
+      "p95Ms": 0.20173956628417966,
+      "minMs": 0.13134536791992188,
+      "maxMs": 0.22187775317382813,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.5469682423889015,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air gradient Parallel4 [fx-k3std]",
+      "impl": "cs-parallel4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k3std",
+      "kernel": "gradient",
+      "n": 98,
+      "medianMs": 0.1618133387451172,
+      "meanMs": 0.16341840033830915,
+      "stdDevMs": 0.015115985552019465,
+      "p95Ms": 0.1894893912475586,
+      "minMs": 0.13210664453125,
+      "maxMs": 0.20474003881835937,
+      "allocatedBytesPerOp": 3776,
+      "speedupVsTs": 1.4935171715438775,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air gradient ParallelVector4 [fx-k3std]",
+      "impl": "cs-parallelvector4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k3std",
+      "kernel": "gradient",
+      "n": 100,
+      "medianMs": 0.14456412866210938,
+      "meanMs": 0.13997177242919923,
+      "stdDevMs": 0.025621960602603154,
+      "p95Ms": 0.17639107463378906,
+      "minMs": 0.09672076538085937,
+      "maxMs": 0.1982325417480469,
+      "allocatedBytesPerOp": 3927,
+      "speedupVsTs": 1.6717217627724086,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air gradient Scalar [fx-k6high]",
+      "impl": "cs-scalar",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "gradient",
+      "n": 100,
+      "medianMs": 0.8583556840820312,
+      "meanMs": 0.8954038512207031,
+      "stdDevMs": 0.1479216134766328,
+      "p95Ms": 1.1798071173339846,
+      "minMs": 0.707315380859375,
+      "maxMs": 1.24141638671875,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.3565169097064844,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air gradient Vector [fx-k6high]",
+      "impl": "cs-vector",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "gradient",
+      "n": 100,
+      "medianMs": 0.785147552734375,
+      "meanMs": 0.8177703368554688,
+      "stdDevMs": 0.15455655083832195,
+      "p95Ms": 1.0946239804199218,
+      "minMs": 0.6279763193359374,
+      "maxMs": 1.216536017578125,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.4830002283581905,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air gradient Parallel4 [fx-k6high]",
+      "impl": "cs-parallel4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k6high",
+      "kernel": "gradient",
+      "n": 98,
+      "medianMs": 0.4999649765625,
+      "meanMs": 0.529439386310188,
+      "stdDevMs": 0.08123095884252415,
+      "p95Ms": 0.6943902091796874,
+      "minMs": 0.417207455078125,
+      "maxMs": 0.7219882353515625,
+      "allocatedBytesPerOp": 3988,
+      "speedupVsTs": 2.3289111329469208,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air gradient ParallelVector4 [fx-k6high]",
+      "impl": "cs-parallelvector4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k6high",
+      "kernel": "gradient",
+      "n": 100,
+      "medianMs": 0.48404011767578126,
+      "meanMs": 0.5137671401074219,
+      "stdDevMs": 0.07687473017028637,
+      "p95Ms": 0.6667134619628906,
+      "minMs": 0.4080655673828125,
+      "maxMs": 0.68901019921875,
+      "allocatedBytesPerOp": 3976,
+      "speedupVsTs": 2.4055320157984736,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air relax Scalar [fx-k3std]",
+      "impl": "cs-scalar",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "relax",
+      "n": 94,
+      "medianMs": 0.93793039453125,
+      "meanMs": 0.9560324783701796,
+      "stdDevMs": 0.057369650733078405,
+      "p95Ms": 1.0659569393554689,
+      "minMs": 0.8782758359375,
+      "maxMs": 1.1236690859375,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.4058004812385752,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air relax Vector [fx-k3std]",
+      "impl": "cs-vector",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "relax",
+      "n": 12,
+      "medianMs": 0.7872447495117187,
+      "meanMs": 0.7877582702636718,
+      "stdDevMs": 0.00927964416941123,
+      "p95Ms": 0.8022872749023437,
+      "minMs": 0.7748798193359375,
+      "maxMs": 0.809009064453125,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.6748831933374368,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air relax Parallel4 [fx-k3std]",
+      "impl": "cs-parallel4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k3std",
+      "kernel": "relax",
+      "n": 50,
+      "medianMs": 0.9198973413085938,
+      "meanMs": 0.9239202318554687,
+      "stdDevMs": 0.03677605065046585,
+      "p95Ms": 0.9788390620605468,
+      "minMs": 0.8128864970703125,
+      "maxMs": 1.000226287109375,
+      "allocatedBytesPerOp": 16402,
+      "speedupVsTs": 1.433358855157287,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air relax ParallelVector4 [fx-k3std]",
+      "impl": "cs-parallelvector4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k3std",
+      "kernel": "relax",
+      "n": 60,
+      "medianMs": 0.8929256860351562,
+      "meanMs": 0.8929068702636719,
+      "stdDevMs": 0.03981413546153033,
+      "p95Ms": 0.9659254646972657,
+      "minMs": 0.79158723828125,
+      "maxMs": 0.9848698984375,
+      "allocatedBytesPerOp": 16233,
+      "speedupVsTs": 1.4766547996340251,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air relax Scalar [fx-k6high]",
+      "impl": "cs-scalar",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "relax",
+      "n": 100,
+      "medianMs": 3.9766556484375,
+      "meanMs": 3.9645579987499997,
+      "stdDevMs": 0.25874008273070603,
+      "p95Ms": 4.336719509179687,
+      "minMs": 3.56718008984375,
+      "maxMs": 4.72526721875,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.3999690926689956,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air relax Vector [fx-k6high]",
+      "impl": "cs-vector",
+      "runtime": "coreclr",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "relax",
+      "n": 33,
+      "medianMs": 3.2485472265625,
+      "meanMs": 3.287489915719697,
+      "stdDevMs": 0.09708622311921025,
+      "p95Ms": 3.4765359640624998,
+      "minMs": 3.184280703125,
+      "maxMs": 3.50316853125,
+      "allocatedBytesPerOp": 0,
+      "speedupVsTs": 1.7137491351452803,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air relax Parallel4 [fx-k6high]",
+      "impl": "cs-parallel4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k6high",
+      "kernel": "relax",
+      "n": 77,
+      "medianMs": 2.9531424453125,
+      "meanMs": 2.9429467264103084,
+      "stdDevMs": 0.14337328406748442,
+      "p95Ms": 3.1407873265624997,
+      "minMs": 2.59461194140625,
+      "maxMs": 3.31371734375,
+      "allocatedBytesPerOp": 32875,
+      "speedupVsTs": 1.8851765883616107,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air relax ParallelVector4 [fx-k6high]",
+      "impl": "cs-parallelvector4",
+      "runtime": "coreclr",
+      "threads": 4,
+      "case": "fx-k6high",
+      "kernel": "relax",
+      "n": 68,
+      "medianMs": 2.8177104296875,
+      "meanMs": 2.8415392725758273,
+      "stdDevMs": 0.13564229517167628,
+      "p95Ms": 3.0789946183593746,
+      "minMs": 2.63009147265625,
+      "maxMs": 3.19010078125,
+      "allocatedBytesPerOp": 32630,
+      "speedupVsTs": 1.9757867740218842,
+      "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+    },
+    {
+      "name": "air relax TypeScript [fx-k3std]",
+      "impl": "ts",
+      "runtime": "v8-node",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "relax",
+      "n": 1000,
+      "medianMs": 1.318543000000318,
+      "meanMs": 1.3232270810000055,
+      "stdDevMs": 0.09355814126713255,
+      "p95Ms": 1.3673890000000029,
+      "minMs": 1.2339500000000498,
+      "maxMs": 2.63082200000008,
+      "allocatedBytesPerOp": null,
+      "speedupVsTs": 1,
+      "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 1.2915 to 1.3287 ms"
+    },
+    {
+      "name": "air gradient TypeScript [fx-k3std]",
+      "impl": "ts",
+      "runtime": "v8-node",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "gradient",
+      "n": 1000,
+      "medianMs": 0.24167100000067876,
+      "meanMs": 0.26390364499999397,
+      "stdDevMs": 0.058623934140790895,
+      "p95Ms": 0.4209399999999732,
+      "minMs": 0.22299000000020897,
+      "maxMs": 0.503830999999991,
+      "allocatedBytesPerOp": null,
+      "speedupVsTs": 1,
+      "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 0.2394 to 0.2427 ms"
+    },
+    {
+      "name": "air divergenceF32 TypeScript [fx-k3std]",
+      "impl": "ts",
+      "runtime": "v8-node",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "divergenceF32",
+      "n": 1000,
+      "medianMs": 0.2550759999994625,
+      "meanMs": 0.27114944999997626,
+      "stdDevMs": 0.1946390069165816,
+      "p95Ms": 0.28475500000058673,
+      "minMs": 0.2355729999999312,
+      "maxMs": 5.118566000000101,
+      "allocatedBytesPerOp": null,
+      "speedupVsTs": 1,
+      "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 0.2491 to 0.2563 ms"
+    },
+    {
+      "name": "air divergenceF64 TypeScript [fx-k3std]",
+      "impl": "ts",
+      "runtime": "v8-node",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "divergenceF64",
+      "n": 1000,
+      "medianMs": 0.28072900000006484,
+      "meanMs": 0.2889489810000014,
+      "stdDevMs": 0.15535043915714583,
+      "p95Ms": 0.29665100000056555,
+      "minMs": 0.260152000000744,
+      "maxMs": 4.2056290000000445,
+      "allocatedBytesPerOp": null,
+      "speedupVsTs": 1,
+      "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 0.2741 to 0.2838 ms"
+    },
+    {
+      "name": "air advect TypeScript [fx-k3std]",
+      "impl": "ts",
+      "runtime": "v8-node",
+      "threads": 1,
+      "case": "fx-k3std",
+      "kernel": "advect",
+      "n": 1000,
+      "medianMs": 1.8106480000005831,
+      "meanMs": 1.8777108390000268,
+      "stdDevMs": 0.4389242510872057,
+      "p95Ms": 2.0330190000004222,
+      "minMs": 1.6855989999985468,
+      "maxMs": 9.950408000000607,
+      "allocatedBytesPerOp": null,
+      "speedupVsTs": 1,
+      "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 1.7883 to 2.0449 ms"
+    },
+    {
+      "name": "air relax TypeScript [fx-k6high]",
+      "impl": "ts",
+      "runtime": "v8-node",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "relax",
+      "n": 600,
+      "medianMs": 5.567195000000083,
+      "meanMs": 5.819928883333336,
+      "stdDevMs": 1.0930605124261115,
+      "p95Ms": 7.611307000000124,
+      "minMs": 5.078154999999697,
+      "maxMs": 21.05370000000039,
+      "allocatedBytesPerOp": null,
+      "speedupVsTs": 1,
+      "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 5.4555 to 5.5942 ms"
+    },
+    {
+      "name": "air gradient TypeScript [fx-k6high]",
+      "impl": "ts",
+      "runtime": "v8-node",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "gradient",
+      "n": 600,
+      "medianMs": 1.1643739999999525,
+      "meanMs": 1.2387068150000187,
+      "stdDevMs": 0.4583956596377637,
+      "p95Ms": 1.4019689999995535,
+      "minMs": 1.0281559999993988,
+      "maxMs": 8.67746199999965,
+      "allocatedBytesPerOp": null,
+      "speedupVsTs": 1,
+      "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 1.1516 to 1.1924 ms"
+    },
+    {
+      "name": "air divergenceF32 TypeScript [fx-k6high]",
+      "impl": "ts",
+      "runtime": "v8-node",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "divergenceF32",
+      "n": 600,
+      "medianMs": 1.2214309999999386,
+      "meanMs": 1.3297263649999846,
+      "stdDevMs": 0.4622052086781233,
+      "p95Ms": 1.6891859999996086,
+      "minMs": 1.0451180000000022,
+      "maxMs": 5.135414999998829,
+      "allocatedBytesPerOp": null,
+      "speedupVsTs": 1,
+      "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 1.2009 to 1.2267 ms"
+    },
+    {
+      "name": "air divergenceF64 TypeScript [fx-k6high]",
+      "impl": "ts",
+      "runtime": "v8-node",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "divergenceF64",
+      "n": 600,
+      "medianMs": 1.3804789999994682,
+      "meanMs": 1.4963435533333662,
+      "stdDevMs": 0.45764382063806563,
+      "p95Ms": 1.8470560000005207,
+      "minMs": 1.1587189999991097,
+      "maxMs": 6.540688000000955,
+      "allocatedBytesPerOp": null,
+      "speedupVsTs": 1,
+      "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 1.3690 to 1.3895 ms"
+    },
+    {
+      "name": "air advect TypeScript [fx-k6high]",
+      "impl": "ts",
+      "runtime": "v8-node",
+      "threads": 1,
+      "case": "fx-k6high",
+      "kernel": "advect",
+      "n": 600,
+      "medianMs": 8.635757000000012,
+      "meanMs": 8.889751756666572,
+      "stdDevMs": 1.0797728465304282,
+      "p95Ms": 11.070457000001625,
+      "minMs": 7.4984890000014275,
+      "maxMs": 18.576238999998168,
+      "allocatedBytesPerOp": null,
+      "speedupVsTs": 1,
+      "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 8.4295 to 8.6731 ms"
+    }
+  ],
+  "projection": {
+    "basis": "reports/1-profile.md shares (relax 15.1, advect 9.3, divergence 5.4, gradient 5.0 % of the katoomba3-standard step loop); every other phase taken as no faster",
+    "airShareOfStepPercent": 63.5,
+    "fourKernelsSharePercent": 34.8,
+    "amdahlCeiling": 1.5337423312883436,
+    "byForm": [
+      {
+        "form": "Scalar",
+        "kernelSpeedups": {
+          "relax": 1.4058004812385752,
+          "advect": 1.106990058827156,
+          "divergenceF32": 1.4651796140168654,
+          "gradient": 1.3890489512749378
+        },
+        "newShareOfOldStepPercent": 91.62751087560444,
+        "projectedStepSpeedup": 1.09137527631589
+      },
+      {
+        "form": "Vector",
+        "kernelSpeedups": {
+          "relax": 1.6748831933374368,
+          "advect": 1.2338994799053427,
+          "divergenceF32": 1.9087741199982415,
+          "gradient": 1.5469682423889015
+        },
+        "newShareOfOldStepPercent": 87.81380408948345,
+        "projectedStepSpeedup": 1.1387731238484857
+      },
+      {
+        "form": "Parallel4",
+        "kernelSpeedups": {
+          "relax": 1.433358855157287,
+          "advect": 1.9961875356605172,
+          "divergenceF32": 2.0759191330683606,
+          "gradient": 1.4935171715438775
+        },
+        "newShareOfOldStepPercent": 86.34263659774061,
+        "projectedStepSpeedup": 1.1581763534264922
+      },
+      {
+        "form": "ParallelVector4",
+        "kernelSpeedups": {
+          "relax": 1.4766547996340251,
+          "advect": 2.4443118585527004,
+          "divergenceF32": 2.531393549234574,
+          "gradient": 1.6717217627724086
+        },
+        "newShareOfOldStepPercent": 84.35470833478749,
+        "projectedStepSpeedup": 1.1854702834502062
+      },
+      {
+        "form": "best of each",
+        "kernelSpeedups": {
+          "relax": 1.6748831933374368,
+          "advect": 2.4443118585527004,
+          "divergenceF32": 2.531393549234574,
+          "gradient": 1.6717217627724086
+        },
+        "newShareOfOldStepPercent": 83.14444659777662,
+        "projectedStepSpeedup": 1.2027261481908056
+      }
+    ]
+  },
+  "gate": {
+    "bar": "Gate 1, standard tier: projected whole-step gain >= 1.5x over the best TypeScript arm",
+    "measured": "projection 1.20x with the best form of each of the four kernels (they are 34.8 % of the step; ceiling 1.53x); assumes the rest of the step is no faster",
+    "result": "not run",
+    "why": "a kernel-only projection on the container's shared cores, against one TypeScript thread; the whole-step measurement is T6.4 / T6.6; browser threads need cross-origin isolation (plan 10.2)"
+  },
+  "notRun": [
+    "arm64 execution (the android-arm64 build only proves the library compiles; it needs the phone, round 1)",
+    "phone and browser timings",
+    "the other air phases (diffuse, smagorinsky, displacements, collocate)"
+  ],
+  "conditions": {
+    "uptimeLoadAverage_1_5_15_min": [
+      {
+        "event": "TypeScript run 1 start",
+        "utc": "17:20:19",
+        "load": [
+          0.92,
+          1.16,
+          1.18
+        ]
+      },
+      {
+        "event": "TypeScript run 1 end = BenchmarkDotNet start",
+        "utc": "17:20:50",
+        "load": [
+          1.01,
+          1.16,
+          1.18
+        ]
+      },
+      {
+        "event": "BenchmarkDotNet end = TypeScript run 2 start",
+        "utc": "18:05:19",
+        "load": [
+          2.2,
+          2.16,
+          2.41
+        ]
+      },
+      {
+        "event": "TypeScript run 2 end = run 3 start",
+        "utc": "18:05:50",
+        "load": [
+          1.73,
+          2.05,
+          2.36
+        ]
+      },
+      {
+        "event": "TypeScript run 3 end",
+        "utc": "18:06:21",
+        "load": [
+          1.41,
+          1.93,
+          2.31
+        ]
+      },
+      {
+        "event": "thread curve with DOTNET_TieredCompilation=0 start",
+        "utc": "18:17:31",
+        "load": [
+          1.14,
+          1.38,
+          1.85
+        ]
+      },
+      {
+        "event": "thread curve with DOTNET_TieredCompilation=0 end",
+        "utc": "18:19:10",
+        "load": [
+          1.6,
+          1.49,
+          1.84
+        ]
+      }
+    ],
+    "note": "The container (4 vCPUs) is shared by up to three builders. The BenchmarkDotNet session ran 17:20 to 18:05 UTC under the heavy lock (load average 1.0 at its start, 2.2 at its end: another builder's work ran in the second half, outside the lock); TypeScript run 1 came before it, runs 2 and 3 after it, each run its own process. The thread curve is a stopwatch run in one process with DOTNET_TieredCompilation=0 (a first run under default tiering, in which all forms share one JIT profile, gave relax Vector128 slower than scalar, which BenchmarkDotNet's one-process-per-form runs and the TieredCompilation=0 run do not show: a tiering artifact, not used). Timings are indicative."
+  },
+  "threadCurve": {
+    "when": "2026-11-16T18:19:10Z",
+    "cores": 4,
+    "method": "stopwatch, 400 single operations after 400 ms warm-up, median",
+    "cells": [
+      {
+        "fixture": "fx-k3std",
+        "kernel": "relax",
+        "form": "scalar",
+        "medianMs": 0.9736
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "relax",
+        "form": "vector128",
+        "medianMs": 0.7846
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "relax",
+        "form": "par1",
+        "medianMs": 0.972
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "relax",
+        "form": "par2",
+        "medianMs": 0.9409
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "relax",
+        "form": "par4",
+        "medianMs": 0.9942
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "relax",
+        "form": "par8",
+        "medianMs": 1.0715
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "relax",
+        "form": "parvec1",
+        "medianMs": 0.7876
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "relax",
+        "form": "parvec2",
+        "medianMs": 0.9028
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "relax",
+        "form": "parvec4",
+        "medianMs": 0.8413
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "relax",
+        "form": "parvec8",
+        "medianMs": 0.8933
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "gradient",
+        "form": "scalar",
+        "medianMs": 0.1682
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "gradient",
+        "form": "vector128",
+        "medianMs": 0.1209
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "gradient",
+        "form": "par1",
+        "medianMs": 0.1678
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "gradient",
+        "form": "par2",
+        "medianMs": 0.1229
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "gradient",
+        "form": "par4",
+        "medianMs": 0.1027
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "gradient",
+        "form": "par8",
+        "medianMs": 0.0929
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "gradient",
+        "form": "parvec1",
+        "medianMs": 0.1266
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "gradient",
+        "form": "parvec2",
+        "medianMs": 0.1462
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "gradient",
+        "form": "parvec4",
+        "medianMs": 0.0851
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "gradient",
+        "form": "parvec8",
+        "medianMs": 0.0799
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "divergenceF32",
+        "form": "scalar",
+        "medianMs": 0.1694
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "divergenceF32",
+        "form": "vector128",
+        "medianMs": 0.1253
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "divergenceF32",
+        "form": "par1",
+        "medianMs": 0.1635
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "divergenceF32",
+        "form": "par2",
+        "medianMs": 0.1069
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "divergenceF32",
+        "form": "par4",
+        "medianMs": 0.1018
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "divergenceF32",
+        "form": "par8",
+        "medianMs": 0.07
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "divergenceF32",
+        "form": "parvec1",
+        "medianMs": 0.1215
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "divergenceF32",
+        "form": "parvec2",
+        "medianMs": 0.0878
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "divergenceF32",
+        "form": "parvec4",
+        "medianMs": 0.087
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "divergenceF32",
+        "form": "parvec8",
+        "medianMs": 0.0613
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "advect",
+        "form": "scalar",
+        "medianMs": 1.5759
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "advect",
+        "form": "vector128",
+        "medianMs": 1.3859
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "advect",
+        "form": "par1",
+        "medianMs": 1.5862
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "advect",
+        "form": "par2",
+        "medianMs": 1.2335
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "advect",
+        "form": "par4",
+        "medianMs": 0.8795
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "advect",
+        "form": "par8",
+        "medianMs": 0.8362
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "advect",
+        "form": "parvec1",
+        "medianMs": 1.3511
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "advect",
+        "form": "parvec2",
+        "medianMs": 1.031
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "advect",
+        "form": "parvec4",
+        "medianMs": 0.7079
+      },
+      {
+        "fixture": "fx-k3std",
+        "kernel": "advect",
+        "form": "parvec8",
+        "medianMs": 0.7119
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "relax",
+        "form": "scalar",
+        "medianMs": 4.1219
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "relax",
+        "form": "vector128",
+        "medianMs": 3.2878
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "relax",
+        "form": "par1",
+        "medianMs": 4.0814
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "relax",
+        "form": "par2",
+        "medianMs": 3.1995
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "relax",
+        "form": "par4",
+        "medianMs": 3.2173
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "relax",
+        "form": "par8",
+        "medianMs": 3.4624
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "relax",
+        "form": "parvec1",
+        "medianMs": 3.2495
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "relax",
+        "form": "parvec2",
+        "medianMs": 3.5397
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "relax",
+        "form": "parvec4",
+        "medianMs": 2.7692
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "relax",
+        "form": "parvec8",
+        "medianMs": 2.9375
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "gradient",
+        "form": "scalar",
+        "medianMs": 0.81
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "gradient",
+        "form": "vector128",
+        "medianMs": 0.6087
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "gradient",
+        "form": "par1",
+        "medianMs": 0.7986
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "gradient",
+        "form": "par2",
+        "medianMs": 0.4953
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "gradient",
+        "form": "par4",
+        "medianMs": 0.4746
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "gradient",
+        "form": "par8",
+        "medianMs": 0.4656
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "gradient",
+        "form": "parvec1",
+        "medianMs": 0.591
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "gradient",
+        "form": "parvec2",
+        "medianMs": 0.5658
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "gradient",
+        "form": "parvec4",
+        "medianMs": 0.367
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "gradient",
+        "form": "parvec8",
+        "medianMs": 0.3904
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "divergenceF32",
+        "form": "scalar",
+        "medianMs": 0.8256
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "divergenceF32",
+        "form": "vector128",
+        "medianMs": 0.6007
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "divergenceF32",
+        "form": "par1",
+        "medianMs": 0.8175
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "divergenceF32",
+        "form": "par2",
+        "medianMs": 0.4782
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "divergenceF32",
+        "form": "par4",
+        "medianMs": 0.4873
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "divergenceF32",
+        "form": "par8",
+        "medianMs": 0.4641
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "divergenceF32",
+        "form": "parvec1",
+        "medianMs": 0.621
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "divergenceF32",
+        "form": "parvec2",
+        "medianMs": 0.6326
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "divergenceF32",
+        "form": "parvec4",
+        "medianMs": 0.3579
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "divergenceF32",
+        "form": "parvec8",
+        "medianMs": 0.3523
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "advect",
+        "form": "scalar",
+        "medianMs": 7.3946
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "advect",
+        "form": "vector128",
+        "medianMs": 6.3903
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "advect",
+        "form": "par1",
+        "medianMs": 7.2354
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "advect",
+        "form": "par2",
+        "medianMs": 5.8084
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "advect",
+        "form": "par4",
+        "medianMs": 3.3643
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "advect",
+        "form": "par8",
+        "medianMs": 3.3703
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "advect",
+        "form": "parvec1",
+        "medianMs": 6.6708
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "advect",
+        "form": "parvec2",
+        "medianMs": 3.5135
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "advect",
+        "form": "parvec4",
+        "medianMs": 2.9049
+      },
+      {
+        "fixture": "fx-k6high",
+        "kernel": "advect",
+        "form": "parvec8",
+        "medianMs": 2.9625
+      }
+    ]
+  },
+  "tsLoadavgAtStartOfEachRun": [
+    {
+      "fixture": "fx-k3std",
+      "loadavgAtStart": [
+        1.01,
+        1.17,
+        1.18
+      ]
+    },
+    {
+      "fixture": "fx-k3std",
+      "loadavgAtStart": [
+        1.94,
+        2.1,
+        2.38
+      ]
+    },
+    {
+      "fixture": "fx-k3std",
+      "loadavgAtStart": [
+        1.57,
+        1.99,
+        2.34
+      ]
+    },
+    {
+      "fixture": "fx-k6high",
+      "loadavgAtStart": [
+        1.01,
+        1.16,
+        1.18
+      ]
+    },
+    {
+      "fixture": "fx-k6high",
+      "loadavgAtStart": [
+        1.73,
+        2.05,
+        2.36
+      ]
+    },
+    {
+      "fixture": "fx-k6high",
+      "loadavgAtStart": [
+        1.41,
+        1.93,
+        2.31
+      ]
+    }
+  ],
+  "webAssembly": {
+    "what": "Fs.Wasm AirExports (Mono AOT, published with dotnet publish -c Release) run under Node 22: every golden case on 4 forms, every output hash compared with the TypeScript kernels hash (the x64 tests check the same golden hashes)",
+    "result": "0 differ",
+    "speedNotMeasured": true,
+    "runs": {
+      "k3std": {
+        "engine": "node",
+        "node": "v22.22.0",
+        "v8": "12.4.254.21-node.33",
+        "runtime": ".NET 11.0.0; rid browser-wasm; dynamicCode False; vector128 True",
+        "startUpMs": 128.35860300000002,
+        "scenario": "katoomba3-standard",
+        "cases": 23,
+        "failures": 0,
+        "aggregateHashOfScalarOutputs": "d98a97742b2d13b411c4ac63a66d738e",
+        "forms": [
+          {
+            "form": "scalar",
+            "outputHashesComparedWithTypeScript": 30
+          },
+          {
+            "form": "vector128",
+            "outputHashesComparedWithTypeScript": 30
+          },
+          {
+            "form": "parallel x4 (one thread in WebAssembly)",
+            "outputHashesComparedWithTypeScript": 30
+          },
+          {
+            "form": "parallel x4 + vector128",
+            "outputHashesComparedWithTypeScript": 30
+          }
+        ]
+      },
+      "k6high": {
+        "engine": "node",
+        "node": "v22.22.0",
+        "v8": "12.4.254.21-node.33",
+        "runtime": ".NET 11.0.0; rid browser-wasm; dynamicCode False; vector128 True",
+        "startUpMs": 135.532199,
+        "scenario": "katoomba3-standard",
+        "cases": 25,
+        "failures": 0,
+        "aggregateHashOfScalarOutputs": "8ea6a8adfc44ce413b271f99662b76ab",
+        "forms": [
+          {
+            "form": "scalar",
+            "outputHashesComparedWithTypeScript": 32
+          },
+          {
+            "form": "vector128",
+            "outputHashesComparedWithTypeScript": 32
+          },
+          {
+            "form": "parallel x4 (one thread in WebAssembly)",
+            "outputHashesComparedWithTypeScript": 32
+          },
+          {
+            "form": "parallel x4 + vector128",
+            "outputHashesComparedWithTypeScript": 32
+          }
+        ]
+      }
+    }
+  },
+  "builds": {
+    "linux-x64": "dotnet build Fs.Kernel -c Release -r linux-x64: ok",
+    "android-arm64": "dotnet build Fs.Kernel -c Release -r android-arm64: compiles only, no arm64 execution (needs the phone, round 1)",
+    "browser-wasm": "dotnet publish Fs.Wasm -c Release (Mono AOT, 92 s): ok, run under Node"
+  },
+  "tests": {
+    "command": "dotnet test --project Fs.Tests -c Release",
+    "total": 573,
+    "passed": 573,
+    "failed": 0,
+    "skipped": 0,
+    "new": 22
+  }
+}

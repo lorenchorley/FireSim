@@ -346,6 +346,37 @@ describe('VegetationLayer staged work', () => {
     l.dispose();
   });
 
+  // A view that holds still finishes the forest in one frame (SceneView pumps to Infinity once the idle stop has begun): wherever the staged work was left, that
+  // gives the trees the steps would have given (what is drawn does not depend on how the work was spread over frames).
+  it('finishes a placement left at any stage in one go, to the same trees as one pumped a step at a time', () => {
+    const opts = { budget: 8000, heightAt, focus: [0, 0] as [number, number], focusRadius: 700, seed: 2 };
+    const start = (): VegetationLayer => {
+      const l = layer();
+      l.staged = true;
+      l.startPlacement(fm, opts, [0, 0, 505], 1);
+      return l;
+    };
+    const stepped = start();
+    let calls = 0;
+    while (stepped.placing && calls < 100000) {
+      stepped.pump(0.0001);
+      calls++;
+    }
+    expect(calls).toBeGreaterThan(5);
+    for (const done of [0, 1, Math.floor(calls / 3), Math.floor((2 * calls) / 3), calls - 1]) {
+      const l = start();
+      for (let i = 0; i < done; i++) l.pump(0.0001);
+      expect(l.placing, `${done} of ${calls} steps done: work is left`).toBe(true);
+      expect(l.pump(Infinity), `${done} of ${calls}: the picture changes`).toBe(true);
+      expect(l.placing, `${done} of ${calls}: nothing is left`).toBe(false);
+      expect(l.pump(Infinity), `${done} of ${calls}: and a second pump has nothing to do`).toBe(false);
+      expect(l.instanceCount, `${done} of ${calls}`).toBe(stepped.instanceCount);
+      expect(l.stats(), `${done} of ${calls}`).toEqual(stepped.stats());
+      l.dispose();
+    }
+    stepped.dispose();
+  });
+
   // The view is built before its screen is in the page and used to draw at 1 px tall during a slow engine start: a placement that
   // finished then was planned for that size (every tree is under a pixel, so none was kept) and stayed that way until the camera
   // moved or the canopy was switched off and on: a forest-less map. SceneView no longer draws without a size; the layer also plans

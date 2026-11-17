@@ -26,7 +26,7 @@ FireSim desktop host "my-computer"
 Open this on this computer:
   http://127.0.0.1:4300/#code=ABCD2345
 Pairing code: the part of the address after #code= (the page asks for it when the address has none)
-Up to 3 simulations at once. Ctrl+C stops it.
+Up to 3 simulations at once, each of at most about 3,217 MiB of memory (--max-session-mib). Ctrl+C stops it.
 ```
 
 The pairing code is printed in the address and nowhere else, once (with `--lan`, once in each address; the `Pairing code:` line says
@@ -34,10 +34,21 @@ where to find it and does not repeat it). The page picks it up from the
 address (after the `#`, which a browser never sends to a server) and offers the *Desktop* engine on its Setup screen. Without
 the code in the address, the page asks for it: type the part after `#code=`.
 
-`--open` opens that address in the default browser by starting a program (`xdg-open`, `open` or `cmd`) with the address as an
-argument, so **the address, code included, is in the argument list of that process and visible to the other users of the
-computer** (`ps`) for as long as it runs. Leave `--open` out on a computer that other people log in to, and open the address
-yourself.
+`--open` starts the default browser (`xdg-open`, `open` or `cmd /c start`) with a **one-use link** and not with the code:
+
+```
+http://127.0.0.1:4300/__firesim/open?t=9f2c...   (64 hexadecimal characters: 256 bits from the operating system's random source)
+```
+
+The host answers that request once, with a redirect to `/#code=CODE`, and the link is then spent; it is also spent after 60 seconds. So
+**the code is never in the argument list of the browser's process** and is not in the list of processes (`ps`) of the computer. What is
+there is the link, for as long as the launcher runs: another user of the computer who reads it within the first moments and opens it
+before the browser does would get the code (and the owner's browser would be shown "This link was used already or has run out"). On a
+computer that other people log in to, that is a race you could still lose; leave `--open` out there and open the address yourself. The
+link is on the first address the host printed (`127.0.0.1` unless `--bind` or `--lan` says otherwise), so the page has the same origin, and
+the same saved data, as one opened by hand. Only a `GET` spends the link (a `HEAD` or a `POST` does not), the answer is never cached
+(`Cache-Control: no-store`, `Referrer-Policy: no-referrer`), the host's log says that a link was used and never what it held, and without `--open` there
+is no such path.
 
 ### A phone on the same network
 
@@ -65,6 +76,51 @@ network can reach it.
 A page opened from a LAN address is not a secure context, so features that browsers allow only on `https` or `localhost` (for
 example the device's location) are not available through it.
 
+### The Android and iOS apps, and other pages (`--allow-app`, `--allow-origin`)
+
+The app does not use the page the host serves: it has its own page, and the person types the desktop's address and the code. For the host to
+take such a page two things are needed, and both are the owner's:
+
+```
+npm run desktop -- --lan --allow-app
+```
+
+`--lan` so that another device can reach the host at all, and `--allow-app` (or `--allow-origin ORIGIN`, repeated for each page) so that the
+host takes a page of that origin. `--allow-app` lists the two origins of the apps, `https://localhost` (the Android app's WebView, whose
+`androidScheme` is `https`) and `capacitor://localhost` (iOS); `--allow-origin` takes any `scheme://host` or `scheme://host:port` with the scheme
+`http`, `https` or `capacitor`, written exactly (no path, no `*`, no `null`; a repeat counts once; the banner lists what is allowed).
+
+What a listed origin gets, and what it does not:
+
+- It may open the engine link (the Origin check of the handshake takes it, besides the page the host serves itself and a client with no Origin) **and
+  it still needs the code**, with the same limit of 5 wrong codes before an address is refused for 60 seconds.
+- It may read `GET /__firesim/host` from its own origin: the host answers with `Access-Control-Allow-Origin` set to **that origin and never to
+  `*`**, with `Vary: Origin`, and answers the preflight (`OPTIONS`, 204, the methods `GET, HEAD, OPTIONS`, the headers `Cache-Control, Pragma`, and
+  `Access-Control-Allow-Private-Network: true` when the browser asks it). No other path of the host has a CORS header, and there is never
+  `Access-Control-Allow-Credentials`.
+- **It does not skip the `Host` check.** The host names it allows (below) are checked first, for the app as for every page: an app that
+  reaches the host by a name the owner did not allow gets 421. An IP address is always allowed as the `Host` (it is not a name that an attacker can point somewhere), so the typed address
+  `192.168.1.20:4300` works; a name such as `desk.lan` needs `--allow-host desk.lan`.
+- **An origin is not a secret and not unique.** Every app built with Capacitor for Android has the origin `https://localhost`, so with `--allow-app`
+  any such app on a phone that can reach the host may try the code; the Origin check keeps web pages of other origins out, **it does not keep
+  other apps out: the code does**. That is why this is a flag the owner gives and not a default, and why the banner says so.
+- The link is `ws://` and the page's first request `http://`: an app whose page is `https://localhost` needs its own settings loosened for that
+  (the Android lane's work, not the host's), and the traffic is as open as `--lan`'s (no TLS).
+
+### IPv6 and one address (`--lan6`, `--bind`)
+
+`--lan` listens on every IPv4 interface (`0.0.0.0`). `--lan6` listens on every interface over IPv6 (`::`, which on most computers takes IPv4 as
+well) and prints every IPv4 and IPv6 address of the computer (an IPv6 address in brackets, `http://[fd00::20]:4300/#code=...`; the link-local
+`fe80::` ones are left out: they need the name of the interface, which an address in a browser cannot carry). `--bind ADDRESS` listens on that one
+address (`--bind 192.168.1.20`, `--bind ::1` for the IPv6 loopback, `--bind ::`, `--bind 0.0.0.0`) and prints it. Give one of `--lan`, `--lan6` and
+`--bind`. A bracketed IPv6 address is in the `Host` allowlist whatever the flag (`Host: [::1]:4300` is this computer), and an address that is
+not this computer's is a sentence and exit 1 ("Cannot listen on 192.0.2.99: this computer has no such address. Check --bind.", or, with no IPv6,
+"Cannot listen on ::1: this computer has no IPv6 (or it is switched off).").
+
+**IPv6 was not tried on a socket on the build machine** (it has no IPv6 at all: `EAFNOSUPPORT`): the tests of `--bind ::1` and `--lan6` check what
+they can there (the refusal with its sentence, the address lists and the `Host` forms as pure functions and over an IPv4 socket) and run the real
+IPv6 sockets when the computer has them (`desktop/main.test.ts`).
+
 ## Flags
 
 `npm run desktop -- FLAGS` (the `--` is npm's, once).
@@ -72,13 +128,18 @@ example the device's location) are not available through it.
 | Flag | Meaning |
 |---|---|
 | `--port N` | Port to listen on. Default 4300; `0` picks a free one. |
-| `--lan` | Listen on every network interface (`0.0.0.0`) and print every non-internal IPv4 address. Default: `127.0.0.1` only. |
+| `--lan` | Listen on every network interface over IPv4 (`0.0.0.0`) and print every non-internal IPv4 address. Default: `127.0.0.1` only. |
+| `--lan6` | Listen on every interface over IPv6 (`::`; on most computers IPv4 too) and print every IPv4 and IPv6 address (not the link-local `fe80::` ones). |
+| `--bind ADDRESS` | Listen on this one IPv4 or IPv6 address (`192.168.1.20`, `::1`, `::`, `0.0.0.0`) and print it. Give one of `--lan`, `--lan6` and `--bind`. |
 | `--code CODE` | The pairing code: 8 to 32 letters and digits (any case; it is kept in capitals). Default: a random one of 8 characters. Arguments are visible to other users of the computer (`ps`): prefer the random code. |
 | `--max-sessions N` | Simulations that may run at once, one worker thread each. Default `max(1, min(4, cores - 1))`. |
-| `--open` | Open the address in the default browser. |
-| `--name TEXT` | The name users see (default: the computer's name). It is what `/__firesim/host` says the host is called. |
+| `--open` | Start the default browser with a one-use link (valid 60 s) that redirects to `/#code=CODE`: the code is not in the launcher's arguments. See "Start it". |
+| `--name TEXT` | The name users see (default: the computer's name). It is what the welcome says the host is called, once the code was right. |
 | `--allow-host NAME` | A name a browser may use to reach this computer, besides an IP address, `localhost`, this computer's own name and its `.local` name (see "Host names" below). Repeat it for more. |
-| `--max-frame-mib N` | The largest message a page may send, in MiB. Default 128 (a 6 km scenario is 6.5 MB, a 9 km one at 10 m about 83 MB); above it the host closes the connection with 1009. |
+| `--allow-origin ORIGIN` | A page of this origin (`scheme://host` or `scheme://host:port`, exactly, the scheme `http`, `https` or `capacitor`) may open the engine link and read `/__firesim/host` besides the page the host serves. The code is still needed and the `Host` check still comes first. Repeat it for more. |
+| `--allow-app` | Shorthand for `--allow-origin https://localhost` and `--allow-origin capacitor://localhost`, the origins of the Android and iOS apps. Any app with that origin can then try the code. Add `--lan` for another device to reach the host. |
+| `--max-frame-mib N` | The largest message a page may send, in MiB. Default 128 (a 6 km scenario is 6.5 MB at 30 m and 46.5 MiB at 10 m, a 9 km one 14.5 MiB at 30 m, 28.6 MiB at 20 m and 104.8 MiB at 10 m, 82% of the default: lane K's figures for the Katoomba demo site); above it the host closes the connection with 1009. A 12 km domain at 10 m would not fit. |
+| `--max-session-mib N` | The most memory one simulation may be estimated to need, in MiB (at least 64): a scenario whose estimate is above it is refused with an engine error, before anything is built. Default: 60% of the computer's memory (`os.totalmem()`, or the limit of the container it runs in when that is lower: `process.constrainedMemory()`) divided by `--max-sessions`, at least 256. See "What it costs". |
 | `--worker-heap-mib N` | The JavaScript heap of one simulation's worker thread, in MiB. Default 4096. See "What it costs": it does not bound the arrays, and a `--max-old-space-size` of Node itself replaces it (the host says so when it starts). |
 | `--help` | The usage text. |
 
@@ -90,18 +151,34 @@ start (the port is in use or not allowed, or the host could not be built), 2 for
 8 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no I, O, 0 or 1), drawn from the operating system's random source at every
 start, printed once at start and never written to a file or a log line. It is compared in constant time. After 5 wrong codes
 from one address, that address is refused for 60 seconds (close code 4429), also with the right code. A browser page must
-also have been served by this host: the handshake of a page from any other origin is refused (the Origin check; a client with
-no Origin header, such as a script, is accepted and still needs the code).
+also have been served by this host, or be of an origin the owner listed (`--allow-origin`, `--allow-app`): the handshake of a page
+from any other origin is refused with HTTP 403 (the Origin check; a client with no Origin header, such as a script, is accepted and
+still needs the code). A hello of another version of the link than this one (2) is closed with 4426 and says the host's own, in the reason
+(`protocol 2`), and it is not counted as a wrong code.
+
+**Before the code the host says as little as it can.** `GET /__firesim/host` says that this is a FireSim host, the version of its link and that
+it wants a code, and nothing else (`{"app":"firesim-desktop-host","protocol":2,"requiresCode":true}`); the host's name, its number of cores, its Node
+version and how many sessions it has and allows are in the `welcome`, which only a client with the right code gets. (0.8.0's answer, protocol 1,
+told all of that to anyone who could reach the port.)
 
 ### Host names (DNS rebinding)
 
 The Origin check compares the page's origin with the `Host` header it sent, so a page that an attacker serves from his own name
 and then points at this computer (DNS rebinding) has the same name in both and passes it. So every HTTP request and every
 WebSocket handshake, the app and `/__firesim/host` included, must also name the host in a way the owner allowed: an IPv4
-address, an IPv6 address in brackets, `localhost`, this computer's own name (`os.hostname()`), `<that name>.local` (what a phone's
+address, an IPv6 address in brackets (`[::1]:4300`), `localhost`, this computer's own name (`os.hostname()`), `<that name>.local` (what a phone's
 mDNS finds), or a name given with `--allow-host`. Any other `Host` gets **421** with an empty body (and one log line per name,
 which says to use `--allow-host`), before the Origin check and before the code is looked at, so it cannot lock the owner out with
-wrong codes. A router that gives this computer a name of its own (`desk.lan`) needs `--allow-host desk.lan`.
+wrong codes. A router that gives this computer a name of its own (`desk.lan`) needs `--allow-host desk.lan`. Listing an origin does
+not change this: the `Host` is checked first, for every page.
+
+**Tried in a real browser, not only with forged headers** (`e2e/host-browser.spec.ts`): Chromium is started with
+`--host-resolver-rules="MAP hostile.example 127.0.0.1"`, which makes a page of the attacker's own name reach this computer (the state a rebinding attack
+ends in); the page's script reads `/__firesim/host` from its own origin and opens the engine link with the right code. Under the hostile name
+the host answers 421 to both, with and without `--lan` and even when the owner has listed the hostile page's origin with `--allow-origin`; under this
+computer's own name, in the same page, the same two requests succeed (the control); and with `--allow-host hostile.example` they succeed under the
+hostile name too, because the owner allowed it. What is not tried: the browser's own DNS timing (the time an attacker's name takes to change its
+address); the host only sees the `Host` header that results.
 
 ## What it costs
 
@@ -119,6 +196,110 @@ failure; it does not bound the arrays. What bounds them is `--max-frame-mib` (th
 `--max-sessions`; a page that knows the code can still use about 17 times 128 MiB for one session, 2.2 GB, and so can each
 session. Leave the code to people you trust.
 
+**Measured again in 0.9.0, at three sizes of fire cell** (`node desktop/measure.mjs EXTENT_M TIER RUN_TO_S [CELL_M]`: `SimHost` on a scenario in a
+process of its own, `node --expose-gc`, a forced garbage collection at each reading; the 30 m and 20 m rows are the Katoomba demo site, the 10 m rows
+are `syntheticScenario({ cellSize: 10 })` of this tree, a slope with one fuel, because the tree has no finer builder of its own; this build machine,
+2026-11-08, one run each, the 6 km 10 m row run twice: 549.6 MiB of arrays both times, 694 and 713 MiB resident):
+
+| scenario, tier, run | message | fire cells | held at the end (arrays and JS heap) | process resident | one snapshot |
+|---|---|---|---|---|---|
+| Katoomba 6 km, fast, 30 m, 1800 s | 6.5 MiB | 40,000 | 97 MiB | 222 MiB | 2.2 MiB |
+| Katoomba 9 km, fast, 30 m, 1800 s | 14.5 MiB | 90,000 | 175 MiB | 304 MiB | 4.3 MiB |
+| Katoomba 6 km, high, 20 m, 600 s | 12.8 MiB | 90,000 | 211 MiB | 350 MiB | 5.4 MiB |
+| 6 km, fast, 10 m (synthetic), 1800 s | 29.9 MiB | 360,000 | 567 MiB | 694 MiB | 15.3 MiB |
+| 6 km, high, 10 m (synthetic), 900 s | 29.9 MiB | 360,000 | 587 MiB | 746 MiB | 16.5 MiB |
+| 9 km, fast, 10 m (synthetic), 1800 s | 67.2 MiB | 810,000 | 1,242 MiB | 1,372 MiB | 33.8 MiB |
+
+A session holds 12 to 19 times its message (19 at 10 m), and the cost follows the number of fire cells, about 1.3 to 1.5 kB each in the fast tier and the
+same at 10 m as at 30 m, not the length of the message. The plan's own runs at 10 m (section 15e: peaks of 1.2 GB for 6 km and 1.9 GB over 9 km after
+hours of a growing fire) are above these because a long fire makes the checkpoints and the ember lists larger. A snapshot of 15 MiB or more is **one
+frame**: the flow control below holds the run back in whole frames.
+
+**`--max-session-mib`: a scenario is refused when its estimate does not fit.** The estimate (`desktop/sessionEstimate.ts`) is made once, when a scenario
+has been decoded and before anything is built, from what the scenario says (the size of the message, its fire grid, its extent, its ember budget): the
+repository's own memory model of the engine (`src/scenario/memoryModel.ts`: bytes per fire cell, per column of the 3-D air, per ember, for the
+checkpoints, measured from real `Simulation` allocations) for the heaviest tier (a page can raise the tier after the start), with the ring of checkpoints
+full, **times 2**, plus the scenario twice (the message and the arrays decoded from it are alive together). It is meant to be above the truth and not
+a meter: it is 1.9 to 3.6 times what the nine sessions measured at 30 m and 20 m held (three are in the table), 2.0 to 2.2 times at 10 m, and
+1.07 and 1.35 times the plan's 10 m peaks of 1.2 and 1.9 GB (whole processes, hours of fire; with lane K's message sizes of the Katoomba demo site at 10 m, 46.5 MiB for 6 km and 104.8 MiB for 9 km, the estimates are 1,286 and 2,570 MiB); it is the figure that lets a 10 m scenario over 9 km (2,570 MiB estimated, a peak of about 1.9 GB measured) in on a 16 GB computer with 3 sessions and
+refuses it on an 8 GB one. `desktop/sessionEstimate.test.ts` pins all of that. The limit it is held to is `--max-session-mib`, by default 60% of the
+computer's memory (or the container's limit) divided by `--max-sessions`, so that every slot in use together cannot be estimated to need more than 60%.
+A refused scenario is an engine error with the sentence `This scenario is too big for the desktop's free memory.` (the page words it from that
+sentence), and the session stays open for a smaller one. What this does **not** do: it does not read the memory that is free now, so it does not
+see other programs; it is made from what the scenario claims at the start, so a page that later asks for a bigger ember budget (`setOption`) or a
+different tier is not checked again; and it does not replace `--max-frame-mib` (which bounds what a page may send) or `--worker-heap-mib` (a runaway
+JavaScript heap).
+
+### The throttled link (0.9.0)
+
+**What this is, and is not.** A measurement on **one machine with a simulated link**, not Wi-Fi: `desktop/throttle.ts` is a TCP proxy that holds each direction
+to a rate and adds a delay (a round trip split in halves, a queue of 256 KiB with backpressure to the sender); no loss, no jitter, no shared medium. The
+host is the real one (a process of its own with its real engine thread); the client is a Node process that speaks its protocol, so what a phone's browser
+spends decoding a frame is **not** measured (in Node a 15 MiB snapshot decodes in 12 to 20 ms at most). The machine is this 4-core build machine, shared with other
+work, so every time carries that noise; one run per row (at 100 Mbit/s the 16/4 and 4/1 rows were run twice and both runs are given). Each row is `node desktop/link.mjs SCENARIO LINK HOLD RUN_S`
+(`katoomba30 5:80 8:4 1800` is the Katoomba demo site, 6 km, 30 m cells, fast tier, a fire on the escarpment, a link of 5 Mbit/s and a round trip of 80 ms, a
+hold at 8 MiB and a release at 4 MiB, 1800 s of fire: 6.5 MiB to upload, 32 snapshots of 2.2 MiB, 70 MiB in all; `synthetic10` is a synthetic 6 km scenario at 10 m cells
+because the tree has no finer builder: 29.9 MiB to upload, snapshots of 15.3 MiB, 240 s of fire, 5 snapshots, 76.5 MiB). While the run streams the client pings the host every
+250 ms, asks "Why here?" every 2 s and presses Pause once; a ping, an answer and a pause each wait behind the snapshots already queued for the link, and the table says how long
+(median of the pings; "ahead" is how many MiB had reached the client between sending a ping and getting its answer).
+
+**What it found: the flow control of 0.8.0 did not act.** On a link of 5 Mbit/s with a hold at 16 MiB the host's memory and the pings' waits were the same as with no hold at
+all (Katoomba, before the fix: a ping answered after 54.5 to 54.7 s in the median and 103 to 104 s at the 95th for the hold at 16/4, 4/1 and off alike; the run took 110.6 to 110.7 s and the host
+peaked at 294 to 297 MiB in each). The cause: the worker continued its run through a `MessageChannel` of its own, Node takes the messages of a port in one go (up to 1000 in a
+turn, those the handler posts to itself included), so the worker never read `parentPort`, and the host's `hold` reached it when the run was over. A trace showed 64 MiB of
+snapshots produced after the host had said hold at 11 MiB, and a Pause answered when the run ended (1.2 s on loopback, where the whole run takes 1.6). At 10 m on 5 Mbit/s
+the whole run (76 MiB) was queued within a second, more than 64 MiB waited for over 10 s, and **the host closed the session** (1008, "link too slow"; the client saw the
+socket drop with 1006, because the close frame stood behind the queue). That happened in two of the three 10 m runs on 5 Mbit/s (hold 16/4 and no hold); the third (4/1) got through, in 123 s, and I did not find out why it
+escaped the guard. The worker now yields with an
+immediate (`desktop/engineWorker.ts`), between which the event loop turns, and a hold is read within a chunk (40 ms); an unthrottled run takes as long as before (alternating
+three runs each: 2.8, 3.4 and 3.6 s with the channel, 2.8, 3.3 and 3.9 s with the immediate, on a loaded machine). `desktop/engine.test.ts` holds a real run after four snapshots and
+counts what is produced in the next 1.5 s: 24 with the channel, at most 4 now.
+
+**After the fix, Katoomba 6 km at 30 m** (frames of 2.2 MiB; the run is as long as the link needs whatever the hold, because the link is the limit):
+
+| link (rate, round trip) | hold, release | the run took | first picture | a ping answered after (median, 95th) | ahead of a ping (median, most) | host's peak memory |
+|---|---|---|---|---|---|---|
+| loopback | 16/4 | 1.8 s | 1.8 s | 1.1 ms, 16 ms | 0 | 264 MiB |
+| 20 Mbit/s, 30 ms | 16/4 | 28.9 s | 5.2 s | 4.5 s, 8.4 s | 11, 22 MiB | 284 MiB |
+| 20 Mbit/s, 30 ms | 4/1 | 27.9 s | 5.2 s | 2.8 s, 4.3 s | 8.7, 13.2 MiB | 267 MiB |
+| 5 Mbit/s, 80 ms | 16/4 | 114.7 s | 16.3 s | 18.9 s, 34.6 s | 13.2, 22 MiB | 265 MiB |
+| 5 Mbit/s, 80 ms | 8/4 | 114.6 s | 16.3 s | 13.9 s, 24.0 s | 8.8, 17.6 MiB | 263 MiB |
+| 5 Mbit/s, 80 ms | 4/1 | 114.7 s | 16.3 s | 10.9 s, 15.7 s | 6.6, 13.2 MiB | 255 MiB |
+| 5 Mbit/s, 80 ms | no hold | 110.7 s | 16.4 s | 54.5 s, 103 s | 33, 65.8 MiB | 296 MiB |
+
+**After the fix, 6 km at 10 m (synthetic)** (frames of 15.3 MiB, so a frame already in the queue is most of what a ping waits behind):
+
+| link | hold, release | the run took | first picture | a ping answered after (median, 95th) | ahead of a ping (median, most) | host's peak memory |
+|---|---|---|---|---|---|---|
+| loopback | 16/4 | 1.3 s | 6.7 s | 1.7 ms, 5.7 ms | 0 | 829 MiB |
+| 100 Mbit/s, 10 ms | 16/4 | 5.7 s, 5.6 s | 10.1 s, 10.2 s | 1.15 s, 1.29 s (medians of two runs) | 15.3 to 30.6, 30.6 to 45.9 MiB | 799, 807 MiB |
+| 100 Mbit/s, 10 ms | 8/4 | 5.7 s | 10.0 s | 0.66 s | 15.3, 15.3 MiB | 798 MiB |
+| 100 Mbit/s, 10 ms | 4/1 | 5.7 s, 5.7 s | 10.1 s, 10.0 s | 0.81 s, 0.84 s | 15.3, 30.6 MiB | 786, 845 MiB |
+| 20 Mbit/s, 30 ms | 16/4 | 26.2 s | 25.3 s | 7.2 s, 13.2 s | 30.6, 45.9 MiB | 803 MiB |
+| 20 Mbit/s, 30 ms | 8/4 | 26.2 s | 25.9 s | 4.6 s, 7.7 s | 15.3, 30.6 MiB | 760 MiB |
+| 20 Mbit/s, 30 ms | 4/1 | 26.2 s | 25.4 s | 4.6 s, 7.7 s | 15.3, 30.6 MiB | 788 MiB |
+| 5 Mbit/s, 80 ms | 16/4 | 103.3 s | 82.4 s | 29.0 s, 53.0 s | 30.6, 45.9 MiB | 742 MiB |
+| 5 Mbit/s, 80 ms | 4/1 | 103.3 s | 82.3 s | 18.9 s, 32.1 s | 15.3, 30.6 MiB | 757 MiB |
+
+What the numbers say, and what they do not:
+
+- **The hold now keeps the host's memory bounded.** On a slow link the host peaks within 8 per cent of what it does on loopback (30 m: 255 to 284 MiB against 264; 10 m: 742 to 845 MiB against 829),
+  because what queues is about the hold mark and one frame, and the session's own arrays (about 190 MiB at 30 m, 650 MiB at 10 m) are what the host's memory is. With no hold the
+  queue is the whole run: +32 MiB for these 70 MiB runs, and for a long run it grows until the guard (64 MiB waiting for over 10 s) closes the session.
+- **The run takes as long with any hold**: the link is the limit (the rows of a link agree to within a few per cent, and the 100 Mbit/s rows, where the link is not much slower
+  than the engine's 15 MiB frames, agree too: a low release mark did not leave the link idle there).
+- **What the page waits for is set by what stands ahead of the answer**: about the hold mark plus the frame in flight plus the kernel's send buffer (4 MiB on this machine). So the
+  wait falls with the hold mark and has a floor, the frame: at 5 Mbit/s a ping waits about 11 s behind 2.2 MiB frames with the hold at 4 MiB and about 19 s behind 15 MiB frames.
+  **That is long.** A Pause on 5 Mbit/s is seen after 15 to 26 s at 30 m (the run goes on for that long in pictures already queued), and at 10 m the wait is the frames, not the hold.
+  Skipping snapshots of a run that is behind (the page would get fewer pictures, and the history it keeps is made of them) was not tried: it changes what the page receives and is a
+  decision for the owner.
+- **The pair is now 8 MiB and 4 MiB** (it was 16 and 4; `DEFAULT_HIGH_WATER_BYTES` in `server.ts`). The measurement says to lower the hold mark: the run is as long, the memory is no
+  higher and the waits fall by a quarter to two fifths (5 Mbit/s: 18.9 s to 13.9 s at 30 m; 20 Mbit/s: 7.2 s to 4.6 s at 10 m; 100 Mbit/s: 1.2 s to 0.7 s). 4 and 1 was lower still at
+  5 Mbit/s (10.9 s) and cost nothing in any shape measured; the release mark stays at 4 MiB because the cost of a low one for a link only a little faster than the engine's frames
+  was measured at 100 Mbit/s and not at 50 or 150, and the frames of a 9 km domain are larger than the ones measured.
+- **Not measured**: a real network (Wi-Fi's loss, jitter and shared medium; the TCP buffers of a phone, which are smaller than this machine's), a phone's browser decoding a frame,
+  `permessage-deflate` on a link (still off: unmeasured there), the real Katoomba demo site at 10 m (the 10 m rows are a synthetic scenario of the same size), and 4 h runs.
+
 **After a session closes the process keeps about two thirds of its peak, but it is the allocator's, not objects.** With a forced
 garbage collection the host's JavaScript heap was 8 MB and its external memory 4 MB after the worker's arrays were freed (the
 83 MB scenario: 1,578 MB resident with the session up, 1,194 MB after it closed). The rest is free memory that the C allocator
@@ -134,16 +315,19 @@ A `--max-old-space-size` in `NODE_OPTIONS` or on the command line is a V8 flag o
 | Path | |
 |---|---|
 | `/` and the rest of `dist/` | The built app. Static, path-traversal safe, no directory listings, no dot files; `index.html` is `no-store`. |
-| `GET /__firesim/host` | `{"app":"firesim-desktop-host","protocol":1,"name":"...","cores":8,"node":"22.22.0","sessions":0,"maxSessions":3}` and nothing else (no code, no paths, no environment). `node` has no leading `v`. **It tells the host's name, its number of cores and its Node version to anyone who can reach the port**: only this computer by default, and with `--lan` everyone on the network. `--name` changes the name. |
+| `GET /__firesim/host` | `{"app":"firesim-desktop-host","protocol":2,"requiresCode":true}` and nothing else: no code, no name, no cores, no Node version, no session count, no paths, no environment. For a listed origin it has `Access-Control-Allow-Origin` (that origin, never `*`) and `Vary: Origin`, and `OPTIONS` of a listed origin is answered (204). |
+| `GET /__firesim/open?t=TOKEN` | Only with `--open`: a good one-use token gets a 302 to `/#code=CODE`, anything else 410 and a sentence. Never cached. |
 | WebSocket `/__firesim/engine` | One engine session per connection. |
 
 ### The engine link
 
-1. The client's first frame must be TEXT, within 5 seconds: `{"type":"hello","protocol":1,"code":"..."}`.
-2. The host answers TEXT `{"type":"welcome","session":"<id>","protocol":1}`, or closes with **4400** (no good hello in time, or a
-   later frame that is not binary), **4401** (wrong code), **4429** (too many wrong codes from this address), **4503** (no free
-   session). A page whose origin is not the host's gets HTTP 403 at the handshake, and a handshake (or any request) with a
-   `Host` that is not one of the host's names gets 421.
+1. The client's first frame must be TEXT, within 5 seconds: `{"type":"hello","protocol":2,"code":"..."}`.
+2. The host answers TEXT `{"type":"welcome","session":"<id>","protocol":2,"name":"...","cores":8,"node":"22.22.0","sessions":1,"maxSessions":3}`
+   (`sessions` counts this one; `node` has no leading `v`; the name is the host's, `--name`), or closes with **4400** (no good hello in time, or
+   a later frame that is not binary), **4401** (wrong code), **4426** (a well formed hello of another version of the link: the reason says the
+   host's, `protocol 2`), **4429** (too many wrong codes from this address), **4503** (no free session). A page whose origin is not the host's
+   and not listed gets HTTP 403 at the handshake, and a handshake (or any request) with a `Host` that is not one of the host's names gets 421.
+   The page's `connectRemote` turns a welcome or a 4426 of another version into a `RemoteVersionError` with both numbers.
 3. After the welcome every frame is BINARY and carries one message of the simulation protocol (`ToWorker` from the page,
    `FromWorker` from the engine) in the codec of `src/sim/remote/codec.ts`: a header of JSON in which every typed array is a
    placeholder, then the arrays' bytes, each on a multiple of 8. The two link messages `ping` and `pong` (the page measures the
@@ -157,25 +341,54 @@ A `--max-old-space-size` in `NODE_OPTIONS` or on the command line is a V8 flag o
    left (so it never makes more than the message is long), and, once all are read, arrays that share bytes (a real 6 km scenario
    is a 123 kB header and 42 arrays). A header with its own `__proto__` field is refused by the decoder and by the encoder. Until the first `init` the engine takes nothing else: any other message is
    dropped, with one log line.
-5. When the link is behind (more than 16 MiB waiting to be sent), the host holds the engine back (the run waits between chunks)
-   until the link has caught up (below 4 MiB): the run gets slower and nothing changes in its results.
+5. When the link is behind (more than **8 MiB** waiting to be sent; 0.8.0 had 16), the host holds the engine back (the run waits between chunks of
+   40 ms: the worker reads the hold within one of them) until the link has caught up (below 4 MiB): the run gets slower and nothing changes in
+   its results. A frame is held back whole: one snapshot of a 9 km domain at 10 m is about 34 to 39 MiB, so the queue can be the 8 MiB and one such
+   frame, under the 64 MiB that closes a session (item 4); a frame above about 55 MiB (a 12 km domain at 10 m) on a slow link would pass it.
+   What this does on a slow link, measured: "The throttled link" under "What it costs".
 6. When a session ends (closed, dropped, an error, a stop) its worker thread is terminated and its slot freed. If the worker
    fails, the page gets an `error` message with the first line of the failure (never the stack, which names this computer's
    files; the first line of a message can still name one) and the host closes with 1011.
+7. **A scenario that does not fit** (its estimate, "What it costs", is above `--max-session-mib`) is refused when its `init` has been decoded
+   and before anything is built: the engine sends the ordinary `error` message `This scenario is too big for the desktop's free memory.`
+   (`TOO_BIG_MESSAGE` in `src/sim/remote/wire.ts`, exported by `src/sim/remote`; the page's `init` rejects with exactly that sentence), the host logs
+   `refused a scenario: about 2,570 MiB expected, 1,638 MiB allowed for a session (--max-session-mib)`, and **the link stays open**: the session takes
+   another, smaller `init` (until one is taken, every other message is dropped as one that came before `init`).
+
+### What the page uses (`src/sim/remote`)
+
+```ts
+// detect.ts (small, imports nothing; one GET of <base>/__firesim/host, 800 ms)
+interface RemoteHostProbe { app: 'firesim-desktop-host'; protocol: number; requiresCode: boolean }   // what the host says before the code
+interface RemoteHostInfo { app: 'firesim-desktop-host'; protocol: 2; name: string; cores: number; node: string; sessions: number; maxSessions: number }  // the welcome
+detectHost(o?: { base?: string; fetchFn?: typeof fetch; timeoutMs?: number }): Promise<RemoteHostProbe | null>   // null on any failure; another protocol is still a probe
+
+// index.ts (lazy)
+connectRemote(o: { base: string; code: string; probe?: RemoteHostProbe; WebSocketCtor?: typeof WebSocket }): Promise<RemoteConnection>
+interface RemoteConnection { controller: SimController; info: RemoteHostInfo; rttMs(): number | null; onClosed(cb: (reason: string) => void): () => void; close(): void }
+class RemoteAuthError extends Error { reason: 'wrong-code' | 'rate-limited' }            // the code was refused
+class RemoteVersionError extends Error { pageProtocol: number; hostProtocol: number }    // another version of the link: "update the app or the host"
+const TOO_BIG_MESSAGE: string                                                            // the engine error of a scenario that does not fit
+```
+
+`base` is `http://host:port` (an IPv6 address in brackets, `https:` for `wss:`); `connectRemote` makes no request before the socket (the welcome says what the
+host is). A `probe` of another protocol is refused at once with a `RemoteVersionError`; a welcome or a 4426 of another protocol gives the same.
+`detectHost` does not judge the version, so that the page can tell "update" from "no desktop answered".
 
 Logs: one line per connect and close with the address and the session id, one per refused connection with the reason (and one
 per forged `Host` name), and one the first time a session's link is behind. Never the code, a wrong guess or a scenario.
 
 ## What is not here
 
-Each is a later decision (contract `docs/plans/0.8.0/J-CONTRACT-desktop-host.md`, section 1):
+Each is a later decision (contracts `docs/plans/0.8.0/J-CONTRACT-desktop-host.md`, section 1, and `docs/plans/0.9.0/CONTRACT-0.9.0.md`):
 
-- The Android app connecting to a desktop (a plain `ws://` socket from an `https://localhost` WebView needs the cleartext and
-  mixed-content settings loosened).
-- TLS, a hosted or cloud server, an installer or a shell (Electron, Tauri).
+- TLS, a hosted or cloud server, an installer or a shell (Electron, Tauri). The host takes a page of an app's origin since 0.9.0 (`--allow-app`);
+  that the app's `https://localhost` page may open a plain `ws://` socket is the app's own setting (the Android lane), not the host's, and was
+  not tried on a phone.
 - Several viewers sharing one session (the welcome carries `session` so that it can come later), and a reconnect after a lost link
   (the session goes with its worker).
-- A "Desktop detail" profile with finer cells or more embers, worker threads that split one run, WebAssembly, WebGPU.
+- Worker threads that split one run, WebAssembly, WebGPU. (The finer grid, the "Desktop detail" setting, is the page's and the scenario's; this
+  host runs whatever scenario the page sends within `--max-session-mib` and `--max-frame-mib`.)
 
 ## What the page does for a host that goes away
 
@@ -198,12 +411,20 @@ simulation times, and the last snapshot's arrays are the same bit for bit (`desk
 
 ## How it is built
 
-- `main.ts` the command line, `cli.ts` the flags, `server.ts` the host (HTTP, the WebSocket, sessions), `security.ts` the code, the
-  rate limit, the Origin check and the Host allowlist, `staticFiles.ts` the static files, `lan.ts` the addresses, `engine.ts` and
-  `engineWorker.ts` the worker thread (`SimHost` on `parentPort`, with codec frames), `holdGate.ts` the flow control.
+- `main.ts` the command line, `cli.ts` the flags, `server.ts` the host (HTTP, the WebSocket, sessions, CORS for a listed origin, the `--open`
+  route), `security.ts` the code, the rate limit, the Origin check (and the origins `--allow-origin` lists) and the Host allowlist,
+  `openToken.ts` the one-use link of `--open`, `staticFiles.ts` the static files, `lan.ts` where it listens and the addresses it prints,
+  `engine.ts` and `engineWorker.ts` the worker thread (`SimHost` on `parentPort`, with codec frames), `holdGate.ts` the flow control,
+  `memoryBound.ts` and `sessionEstimate.ts` the memory a session may be estimated to need.
+- `src/sim/remote/wire.ts` is what the page and the host share about the link: its version (2), the close codes and the one sentence of a scenario that is too big.
 - The simulation is TypeScript with extension-less imports, which Node cannot load as it is, so `build.mjs` bundles `main.ts` and
   `engineWorker.ts` for Node with Vite (the repository's bundler; `ws` stays outside) into `desktop/.build/`, which is not tracked.
   `npm run desktop` is `node desktop/run.mjs`: build, then start.
 - `ws` and `@types/ws` are the only additions, as devDependencies: nothing of the host is in the app bundle.
 - `npx tsc --noEmit` type-checks `desktop/` with the rest of the repository.
-- Tests: `npx vitest run desktop src/sim/remote`. They include the real worker thread and the determinism comparison.
+- Tests: `npx vitest run desktop src/sim/remote`. They include the real worker thread, the determinism comparison, a real host as a process
+  (`main.test.ts`: the flags, the banner, `--open` with a launcher injected and with a program named `xdg-open` at the front of the `PATH`) and
+  the simulated link (`throttle.test.ts`). `e2e/host-browser.spec.ts` is the real-browser check of the `Host` allowlist (Playwright).
+- Two tools, each built and run by a small runner (the folders `desktop/.build-test-*` are ignored by the version control):
+  `node desktop/measure.mjs EXTENT_M TIER RUN_TO_S [CELL_M]` (what one session costs in memory) and
+  `node desktop/link.mjs SCENARIO LINK HOLD RUN_S` (the throttled-link measurement). See "What it costs".
