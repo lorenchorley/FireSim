@@ -15,12 +15,17 @@ export function makeFastThread(meta: FastMeta, views: Record<string, TypedAny>, 
   return { ls, py: new PyroPar(meta, views, pool) };
 }
 
-/** Replay factories: instance 3 for the level set, the one pyro instance, both reset to a fresh object. */
-export function replayFactories(ft: FastThread): { ls: LSFactory; py: PyroFactory } {
+/** Replay factories (`force`: chunked paths whatever the size): instance 3 for the level set, the one pyro instance, both reset to a fresh object. */
+export function replayFactories(ft: FastThread, force = false): { ls: LSFactory; py: PyroFactory } {
   return {
     ls: (): LS => {
       const l = ft.ls[3]!;
       l.reset();
+      if (force) {
+        // as the C# tests' MinParallelBand = MinParallelBox = 0: the chunked evaluate and the wavefront run whatever the size
+        l.minParallelBand = 0;
+        l.minParallelBox = 0;
+      }
       return l;
     },
     py: (): LS => {

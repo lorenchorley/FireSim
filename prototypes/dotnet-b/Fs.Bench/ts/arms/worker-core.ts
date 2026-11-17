@@ -129,7 +129,7 @@ function drive(s: Setup, msg: Record<string, unknown>): Record<string, unknown> 
     } else {
       const ft = s.fast!;
       if (mode === 'verify') {
-        const f = replayFactories(ft);
+        const f = replayFactories(ft, msg.force === true);
         verify = summarize(runFastCases(fx, f.ls, f.py));
       } else stats = measureAll(fastOpsPool(fx, ft), msg.samples as number, msg.warmMs as number, msg.minSampleMs as number, msg.only as string[] | undefined);
     }

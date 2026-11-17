@@ -2,7 +2,7 @@
  * T1.5 (a), (b): the Node runner of the TypeScript arms. One process = one arm configuration on one problem (a fresh process per fixture, as `air/bench.ts` and `fast/bench.ts` were run).
  *
  *   node arms-node.mjs --arm app|pool [--threads N] --mode verify|time --problem air:k3std|air:k6high|fast:k6f-900|fast:k6f-late --fixtures DIR --out FILE.json
- *        [--samples 1000] [--warm 1500] [--min-sample-ms 0] [--spin 200] [--only a,b]
+ *        [--samples 1000] [--warm 1500] [--min-sample-ms 0] [--spin 200] [--only a,b] [--force]
  *
  * `--arm app`: one Node worker running the app's UNMODIFIED kernels, data resident in the worker, timing inside the worker (so no message passing is counted): the single-thread baseline
  * of Gates 1 and 1W (arm a). `--arm pool --threads N`: N workers (worker 0 drives and takes part) over one SharedArrayBuffer on the C# chunks (arm b); N = 1 is the range form without helpers.
@@ -67,6 +67,7 @@ const spec: RunSpec = {
   arm, threads, spinUs: Number(opt('spin', threads > os.cpus().length ? '0' : '200')), mode,
   samples: Number(opt('samples', fixName === 'k6high' ? '600' : '1000')), warmMs: Number(opt('warm', '1500')), minSampleMs: Number(opt('min-sample-ms', '0')),
   only: argv.includes('--only') ? opt('only').split(',') : undefined,
+  force: argv.includes('--force'),
 };
 
 const loadStart = os.loadavg();

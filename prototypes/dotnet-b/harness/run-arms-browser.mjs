@@ -3,7 +3,7 @@
  * Card T1.5 (c): the TypeScript kernel arms in a Web Worker in Playwright's pre-installed Chromium (headless, `chromium.launch()` with no options).
  *
  *   node prototypes/dotnet-b/harness/run-arms-browser.mjs --arm app|pool [--threads N] --mode verify|time --problem air:k3std|air:k6high|fast:k6f-900|fast:k6f-late
- *        --fixtures DIR --out FILE.json [--samples 1000] [--warm 1500] [--min-sample-ms 2] [--spin 200] [--only a,b] [--isolation on|off] [--rebuild]
+ *        --fixtures DIR --out FILE.json [--samples 1000] [--warm 1500] [--min-sample-ms 2] [--spin 200] [--only a,b] [--isolation on|off] [--force] [--rebuild]
  *
  * `--arm app`: ONE worker, the app's unmodified kernels, data resident, timing inside the worker. `--arm pool --threads N`: N workers over a SharedArrayBuffer on the C# chunks; needs
  * `crossOriginIsolated`, which the tiny local server provides by sending Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp on every response
@@ -81,6 +81,7 @@ const spec = {
   spinUs: Number(opt('spin', threads > os.cpus().length ? '0' : '200')),
   samples: Number(opt('samples', fixName === 'k6high' ? '600' : '1000')), warmMs: Number(opt('warm', '1500')), minSampleMs: Number(opt('min-sample-ms', '2')),
   only: argv.includes('--only') ? opt('only').split(',') : undefined,
+  force: argv.includes('--force'),
 };
 
 const { chromium } = createRequire(import.meta.url)('playwright');

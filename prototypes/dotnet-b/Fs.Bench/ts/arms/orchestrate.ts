@@ -25,6 +25,8 @@ export interface RunSpec {
   warmMs: number;
   minSampleMs: number;
   only?: string[];
+  /** verify: take the chunked paths whatever the size (thresholds 0), as the C# tests do besides the default ones */
+  force?: boolean;
 }
 
 export function fastMetaOf(fx: Fixture): FastMeta {
@@ -42,7 +44,7 @@ async function expect(w: WorkerHandle, t: string): Promise<Record<string, unknow
 }
 
 export async function runProblem(workers: WorkerHandle[], kind: 'air' | 'fast', raw: RawFixture, spec: RunSpec): Promise<Record<string, unknown>> {
-  const common = { mode: spec.mode, samples: spec.samples, warmMs: spec.warmMs, minSampleMs: spec.minSampleMs, only: spec.only };
+  const common = { mode: spec.mode, samples: spec.samples, warmMs: spec.warmMs, minSampleMs: spec.minSampleMs, only: spec.only, force: spec.force };
   if (spec.arm === 'app') {
     workers[0]!.post({ t: 'app', kind, name: raw.name, header: raw.header, data: raw.data.slice(0), ...common });
     return await expect(workers[0]!, 'result');
