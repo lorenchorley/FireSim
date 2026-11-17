@@ -420,6 +420,157 @@ public sealed class LevelSetKernelTests
         Assert.IsTrue(floatCaught <= wideCaught);
     }
 
+    // ───────────────────────────── mutation checks of evaluate ─────────────────────────────
+
+    // Each mutant is the literal arithmetic with ONE expression changed (IEvalOps is the seam); it runs through the same scalar code as the real thing (EvaluateWith).
+    readonly struct MutLap : IEvalOps // (pl + pr) + (pd + pu) - 4 p: the sum associated differently
+    {
+        public static double Normal(double c, double cn) => LiteralEval.Normal(c, cn);
+        public static double Speed(double sc, double cosp, double a2, double c2, double b2, double s2) => LiteralEval.Speed(sc, cosp, a2, c2, b2, s2);
+        public static double Cfl(double r, double nxv, double nyv, double nu4, double inv) => LiteralEval.Cfl(r, nxv, nyv, nu4, inv);
+        public static double G2(double dmx, double dpx, double dmy, double dpy) => LiteralEval.G2(dmx, dpx, dmy, dpy);
+        public static double Lap(double pl, double pr, double pd, double pu, double p, double inv2) => ((pl + pr) + (pd + pu) - 4 * p) * inv2;
+        public static double Visc(double nuH, double r, double lap) => LiteralEval.Visc(nuH, r, lap);
+        public static double Tend(double r, double g2, double visc) => LiteralEval.Tend(r, g2, visc);
+    }
+
+    readonly struct MutVisc : IEvalOps // nuH * (R * lap)
+    {
+        public static double Normal(double c, double cn) => LiteralEval.Normal(c, cn);
+        public static double Speed(double sc, double cosp, double a2, double c2, double b2, double s2) => LiteralEval.Speed(sc, cosp, a2, c2, b2, s2);
+        public static double Cfl(double r, double nxv, double nyv, double nu4, double inv) => LiteralEval.Cfl(r, nxv, nyv, nu4, inv);
+        public static double G2(double dmx, double dpx, double dmy, double dpy) => LiteralEval.G2(dmx, dpx, dmy, dpy);
+        public static double Lap(double pl, double pr, double pd, double pu, double p, double inv2) => LiteralEval.Lap(pl, pr, pd, pu, p, inv2);
+        public static double Visc(double nuH, double r, double lap) => nuH * (r * lap);
+        public static double Tend(double r, double g2, double visc) => LiteralEval.Tend(r, g2, visc);
+    }
+
+    readonly struct MutG2 : IEvalOps // the four one-sided squares added in the reverse order
+    {
+        public static double Normal(double c, double cn) => LiteralEval.Normal(c, cn);
+        public static double Speed(double sc, double cosp, double a2, double c2, double b2, double s2) => LiteralEval.Speed(sc, cosp, a2, c2, b2, s2);
+        public static double Cfl(double r, double nxv, double nyv, double nu4, double inv) => LiteralEval.Cfl(r, nxv, nyv, nu4, inv);
+        public static double G2(double dmx, double dpx, double dmy, double dpy)
+        {
+            double g2 = 0;
+            if (dpy < 0) g2 += dpy * dpy;
+            if (dmy > 0) g2 += dmy * dmy;
+            if (dpx < 0) g2 += dpx * dpx;
+            if (dmx > 0) g2 += dmx * dmx;
+            return g2;
+        }
+        public static double Lap(double pl, double pr, double pd, double pu, double p, double inv2) => LiteralEval.Lap(pl, pr, pd, pu, p, inv2);
+        public static double Visc(double nuH, double r, double lap) => LiteralEval.Visc(nuH, r, lap);
+        public static double Tend(double r, double g2, double visc) => LiteralEval.Tend(r, g2, visc);
+    }
+
+    readonly struct MutFma : IEvalOps // a fused multiply-add in the speed (what a contracting compiler would do, and what 10.4 forbids)
+    {
+        public static double Normal(double c, double cn) => LiteralEval.Normal(c, cn);
+        public static double Speed(double sc, double cosp, double a2, double c2, double b2, double s2) => sc * cosp + Math.Sqrt(Math.FusedMultiplyAdd(a2, c2, s2 > 0 ? b2 * s2 : 0));
+        public static double Cfl(double r, double nxv, double nyv, double nu4, double inv) => LiteralEval.Cfl(r, nxv, nyv, nu4, inv);
+        public static double G2(double dmx, double dpx, double dmy, double dpy) => LiteralEval.G2(dmx, dpx, dmy, dpy);
+        public static double Lap(double pl, double pr, double pd, double pu, double p, double inv2) => LiteralEval.Lap(pl, pr, pd, pu, p, inv2);
+        public static double Visc(double nuH, double r, double lap) => LiteralEval.Visc(nuH, r, lap);
+        public static double Tend(double r, double g2, double visc) => LiteralEval.Tend(r, g2, visc);
+    }
+
+    readonly struct MutNormal : IEvalOps // c * (1 / cn) instead of c / cn
+    {
+        public static double Normal(double c, double cn) => c * (1 / cn);
+        public static double Speed(double sc, double cosp, double a2, double c2, double b2, double s2) => LiteralEval.Speed(sc, cosp, a2, c2, b2, s2);
+        public static double Cfl(double r, double nxv, double nyv, double nu4, double inv) => LiteralEval.Cfl(r, nxv, nyv, nu4, inv);
+        public static double G2(double dmx, double dpx, double dmy, double dpy) => LiteralEval.G2(dmx, dpx, dmy, dpy);
+        public static double Lap(double pl, double pr, double pd, double pu, double p, double inv2) => LiteralEval.Lap(pl, pr, pd, pu, p, inv2);
+        public static double Visc(double nuH, double r, double lap) => LiteralEval.Visc(nuH, r, lap);
+        public static double Tend(double r, double g2, double visc) => LiteralEval.Tend(r, g2, visc);
+    }
+
+    readonly struct MutCfl : IEvalOps // (|nx| + (|ny| + 4 nu)): the sum associated differently (the CFL maximum decides the step)
+    {
+        public static double Normal(double c, double cn) => LiteralEval.Normal(c, cn);
+        public static double Speed(double sc, double cosp, double a2, double c2, double b2, double s2) => LiteralEval.Speed(sc, cosp, a2, c2, b2, s2);
+        public static double Cfl(double r, double nxv, double nyv, double nu4, double inv) => r * ((nxv < 0 ? -nxv : nxv) + ((nyv < 0 ? -nyv : nyv) + nu4)) * inv;
+        public static double G2(double dmx, double dpx, double dmy, double dpy) => LiteralEval.G2(dmx, dpx, dmy, dpy);
+        public static double Lap(double pl, double pr, double pd, double pu, double p, double inv2) => LiteralEval.Lap(pl, pr, pd, pu, p, inv2);
+        public static double Visc(double nuH, double r, double lap) => LiteralEval.Visc(nuH, r, lap);
+        public static double Tend(double r, double g2, double visc) => LiteralEval.Tend(r, g2, visc);
+    }
+
+    readonly struct MutSwap : IEvalOps // NOT a mutation: operands of single + and * swapped (commutative: the bits must be identical, which shows that the test does not cry wolf)
+    {
+        public static double Normal(double c, double cn) => c / cn;
+        public static double Speed(double sc, double cosp, double a2, double c2, double b2, double s2) => Math.Sqrt((s2 > 0 ? s2 * b2 : 0) + c2 * a2) + cosp * sc;
+        public static double Cfl(double r, double nxv, double nyv, double nu4, double inv) => inv * (r * (((nyv < 0 ? -nyv : nyv) + (nxv < 0 ? -nxv : nxv)) + nu4));
+        public static double G2(double dmx, double dpx, double dmy, double dpy) => LiteralEval.G2(dmx, dpx, dmy, dpy);
+        public static double Lap(double pl, double pr, double pd, double pu, double p, double inv2) => inv2 * ((pr + pl) + pd + pu - p * 4);
+        public static double Visc(double nuH, double r, double lap) => (r * nuH) * lap;
+        public static double Tend(double r, double g2, double visc) => visc + -r * Math.Sqrt(g2);
+    }
+
+    static Dictionary<string, string> EvalWithHashes<TM>(LevelSetCore ls, string mode) where TM : struct, IEvalOps
+    {
+        int count = ls.BandCount;
+        var o = new double[count];
+        double[] src = mode == "e2" ? ls.PhiS : ls.Phi;
+        double maxC = ls.EvaluateWith<TM>(src, o, mode != "e2");
+        var r = new Dictionary<string, string> { ["maxC"] = FastCaseRunner.Bits(maxC), ["out"] = FastCaseRunner.Hash(o) };
+        if (mode == "e1")
+        {
+            r["r1"] = FastCaseRunner.Hash(ls.R1.AsSpan(0, count));
+            r["n1x"] = FastCaseRunner.Hash(ls.N1x.AsSpan(0, count));
+            r["n1y"] = FastCaseRunner.Hash(ls.N1y.AsSpan(0, count));
+        }
+        return r;
+    }
+
+    [TestMethod]
+    public void OperandOrderSlipsInEvaluateAreCaughtOnTheRealFramesAndAHarmlessSwapIsNot()
+    {
+        // Real frames of both windows, the plain variant, stage 1 and stage 2. Which output exposes each mutant is the point (T1.4a: a float32 store hides double-rounding slips):
+        // out (Float64 tendencies) and maxC are doubles; r1, n1x, n1y are stored as float32.
+        string[] names = ["lap", "visc", "g2", "fma", "normal", "cfl", "swap"];
+        var caughtBy = names.ToDictionary(n => n, _ => new SortedSet<string>());
+        var caughtFrames = names.ToDictionary(n => n, _ => 0);
+        int frames = 0;
+        foreach (string name in new[] { "k6f-900", "k6f-late" })
+        {
+            var data = FastTestData.Files.TryLoad(name);
+            if (data is null) { Assert.Inconclusive("fixture missing"); return; }
+            JsonElement golden = FastTestData.Golden(name);
+            var meta = FastCaseRunner.ReadMeta(golden.GetProperty("meta"));
+            foreach (JsonElement c in golden.GetProperty("cases").EnumerateArray())
+            {
+                if (c.GetProperty("kind").GetString() != "evaluate") continue;
+                string mode = c.GetProperty("mode").GetString()!;
+                if (mode == "bound") continue;
+                JsonElement plain = c.GetProperty("variants")[0].GetProperty("result");
+                Dictionary<string, string> Run<TM>() where TM : struct, IEvalOps
+                {
+                    var (ls, _) = FastCaseRunner.BuildLs(data, meta, c, "plain");
+                    return EvalWithHashes<TM>(ls, mode);
+                }
+                var control = Run<LiteralEval>();
+                foreach (string key in control.Keys) Assert.AreEqual(plain.GetProperty(key).GetString(), control[key], $"control, {name} {c.GetProperty("id").GetString()} {key}");
+                frames++;
+                void Compare(string mutant, Dictionary<string, string> m)
+                {
+                    bool any = false;
+                    foreach (string key in control.Keys)
+                        if (m[key] != control[key]) { caughtBy[mutant].Add(key); any = true; }
+                    if (any) caughtFrames[mutant]++;
+                }
+                Compare("lap", Run<MutLap>()); Compare("visc", Run<MutVisc>()); Compare("g2", Run<MutG2>()); Compare("fma", Run<MutFma>());
+                Compare("normal", Run<MutNormal>()); Compare("cfl", Run<MutCfl>()); Compare("swap", Run<MutSwap>());
+            }
+        }
+        foreach (string n in names) FastTestData.Note($"evaluate mutant {n}: differs on {caughtFrames[n]} of {frames} real frames, in outputs [{string.Join(",", caughtBy[n])}]");
+        Assert.IsTrue(frames >= 8, frames.ToString());
+        Assert.AreEqual(0, caughtFrames["swap"], "a commutative swap changes no bit");
+        foreach (string n in new[] { "lap", "visc", "g2", "fma", "normal", "cfl" })
+            Assert.IsTrue(caughtFrames[n] >= 1, $"mutant {n} was not caught by any real frame (if an expression cannot matter on this data, say so in the report and drop it here)");
+    }
+
     // ───────────────────────────── allocation ─────────────────────────────
 
     [TestMethod]

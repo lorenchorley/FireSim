@@ -65,6 +65,46 @@ readonly struct F64Dist : IDistWord<double>
     [MethodImpl(MethodImplOptions.AggressiveInlining)] public static void Store(double[] a, int i, double v) => a[i] = v;
 }
 
+/// <summary>The arithmetic of <c>evaluate</c> that an operand-order slip could change, as a seam for the mutation tests (Fs.Tests/LevelSetKernelTests): the kernel uses <see cref="LiteralEval"/> (the TypeScript's expressions, operation for operation); a test passes a mutated copy to <see cref="LevelSetCore.EvaluateWith{TM}"/>. Static abstract members of a struct type argument are specialised by the JIT: no cost in the real path.</summary>
+public interface IEvalOps
+{
+    /// <summary><c>c / cn</c>: the normalisation of the front normal.</summary>
+    static abstract double Normal(double c, double cn);
+    /// <summary><c>R = sC * cosp + sqrt(a2 * c2 + (s2 > 0 ? b2 * s2 : 0))</c>.</summary>
+    static abstract double Speed(double sc, double cosp, double a2, double c2, double b2, double s2);
+    /// <summary>The CFL candidate <c>R * (|nx| + |ny| + 4 nu) / dx</c> (written <c>R * (...) * inv</c>).</summary>
+    static abstract double Cfl(double r, double nxv, double nyv, double nu4, double inv);
+    /// <summary>The squared upwind gradient: the four one-sided terms added in the order dmx, dpx, dmy, dpy.</summary>
+    static abstract double G2(double dmx, double dpx, double dmy, double dpy);
+    /// <summary><c>(pl + pr + pd + pu - 4 p) * inv2</c>.</summary>
+    static abstract double Lap(double pl, double pr, double pd, double pu, double p, double inv2);
+    /// <summary><c>nuH * R * lap</c>.</summary>
+    static abstract double Visc(double nuH, double r, double lap);
+    /// <summary><c>-R * sqrt(g2) + visc</c>.</summary>
+    static abstract double Tend(double r, double g2, double visc);
+}
+
+/// <summary>The TypeScript's expressions, in its operation order.</summary>
+public readonly struct LiteralEval : IEvalOps
+{
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double Normal(double c, double cn) => c / cn;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double Speed(double sc, double cosp, double a2, double c2, double b2, double s2) => sc * cosp + Math.Sqrt(a2 * c2 + (s2 > 0 ? b2 * s2 : 0));
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double Cfl(double r, double nxv, double nyv, double nu4, double inv) => r * ((nxv < 0 ? -nxv : nxv) + (nyv < 0 ? -nyv : nyv) + nu4) * inv;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static double G2(double dmx, double dpx, double dmy, double dpy)
+    {
+        double g2 = 0;
+        if (dmx > 0) g2 += dmx * dmx;
+        if (dpx < 0) g2 += dpx * dpx;
+        if (dmy > 0) g2 += dmy * dmy;
+        if (dpy < 0) g2 += dpy * dpy;
+        return g2;
+    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double Lap(double pl, double pr, double pd, double pu, double p, double inv2) => (pl + pr + pd + pu - 4 * p) * inv2;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double Visc(double nuH, double r, double lap) => nuH * r * lap;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double Tend(double r, double g2, double visc) => -r * Math.Sqrt(g2) + visc;
+}
+
 /// <summary>
 /// C# port of <c>LevelSetCore</c> (src/fire/spread/levelSet.ts), the kernels of the fast tier's fire phase: <see cref="Evaluate"/> (the tendency of every band
 /// cell, 3.0 % of a 30-minute fast-tier step and 13.6 % at four hours: T1.1) and <see cref="Reinit"/> (fast-sweeping re-distancing, 2.9 % and 10.1 %), plus the
@@ -201,11 +241,11 @@ public sealed class LevelSetCore
         EnsureScratch();
         int count = BandCount;
         bool lazy = stage1 && Lazy && @out is not null;
-        if (!exec.Vector && exec.Threads < 2) return EvalRange<InlineHooks>(0, count, src, @out, stage1, lazy);
+        if (!exec.Vector && exec.Threads < 2) return EvalRange<InlineHooks, LiteralEval>(0, count, src, @out, stage1, lazy);
         // the chunked and vector forms: ask for the speeds first (serial, band order), then compute with no hook in the loop
         if (lazy) RequestSpeeds(src);
         if (exec.Threads < 2 || count < MinParallelBand || count <= EvalChunk)
-            return exec.Vector ? EvalRangeVec(0, count, src, @out, stage1) : EvalRange<NoHooks>(0, count, src, @out, stage1, false);
+            return exec.Vector ? EvalRangeVec(0, count, src, @out, stage1) : EvalRange<NoHooks, LiteralEval>(0, count, src, @out, stage1, false);
         int chunks = (count + EvalChunk - 1) / EvalChunk;
         if (_chunkMax.Length < chunks) _chunkMax = new double[chunks];
         _src = src; _out = @out; _stage1 = stage1; _vec = exec.Vector;
@@ -216,10 +256,17 @@ public sealed class LevelSetCore
         return maxC;
     }
 
+    /// <summary>Serial scalar evaluation with another arithmetic (<see cref="IEvalOps"/>), hooks inline: only for the mutation test.</summary>
+    public double EvaluateWith<TM>(double[] src, double[]? @out, bool stage1) where TM : struct, IEvalOps
+    {
+        EnsureScratch();
+        return EvalRange<InlineHooks, TM>(0, BandCount, src, @out, stage1, stage1 && Lazy && @out is not null);
+    }
+
     void EvalChunkBody(int c)
     {
         int a0 = c * EvalChunk, a1 = Math.Min(BandCount, a0 + EvalChunk);
-        _chunkMax[c] = _vec ? EvalRangeVec(a0, a1, _src, _out, _stage1) : EvalRange<NoHooks>(a0, a1, _src, _out, _stage1, false);
+        _chunkMax[c] = _vec ? EvalRangeVec(a0, a1, _src, _out, _stage1) : EvalRange<NoHooks, LiteralEval>(a0, a1, _src, _out, _stage1, false);
     }
 
     /// <summary>The serial pass of the chunked forms: for each band position in order, the TypeScript's decision whether to call <c>ensureSpeed(k)</c>, and the call.</summary>
@@ -267,7 +314,7 @@ public sealed class LevelSetCore
     }
 
     /// <summary>The literal port of the loop of <c>evaluate</c> over band positions [a0, a1). Returns the maximum of this range.</summary>
-    double EvalRange<THook>(int a0, int a1, double[] src, double[]? @out, bool stage1, bool lazy) where THook : struct, IHookMode
+    double EvalRange<THook, TM>(int a0, int a1, double[] src, double[]? @out, bool stage1, bool lazy) where THook : struct, IHookMode where TM : struct, IEvalOps
     {
         int nx = Nx;
         bool ext = P.BurntExtension;
@@ -370,8 +417,8 @@ public sealed class LevelSetCore
             double nxv, nyv;
             if (cn > eps)
             {
-                nxv = cx / cn;
-                nyv = cy / cn;
+                nxv = TM.Normal(cx, cn);
+                nyv = TM.Normal(cy, cn);
             }
             else
             {
@@ -381,7 +428,7 @@ public sealed class LevelSetCore
             double cosp = nxv * ex + nyv * ey;
             double c2 = cosp * cosp;
             double s2 = 1 - c2;
-            double R = W(SC, k) * cosp + Math.Sqrt(a2 * c2 + (s2 > 0 ? b2 * s2 : 0));
+            double R = TM.Speed(W(SC, k), cosp, a2, c2, b2, s2);
             if (vr > 0)
             {
                 // VLS is an absolute lateral rate (D23): the support function of the convex hull of the ellipse and the segment +-R_VLS t.
@@ -405,7 +452,7 @@ public sealed class LevelSetCore
             }
             if (stage1)
             {
-                double c = R * ((nxv < 0 ? -nxv : nxv) + (nyv < 0 ? -nyv : nyv) + nu4) * inv;
+                double c = TM.Cfl(R, nxv, nyv, nu4, inv);
                 if (c > maxC) maxC = c;
             }
             if (@out is null) continue;
@@ -414,13 +461,9 @@ public sealed class LevelSetCore
             double dpx = (pr - p) * inv;
             double dmy = (p - pd) * inv;
             double dpy = (pu - p) * inv;
-            double g2 = 0;
-            if (dmx > 0) g2 += dmx * dmx;
-            if (dpx < 0) g2 += dpx * dpx;
-            if (dmy > 0) g2 += dmy * dmy;
-            if (dpy < 0) g2 += dpy * dpy;
-            double lap = (pl + pr + pd + pu - 4 * p) * inv2;
-            @out[a] = -R * Math.Sqrt(g2) + (lap < 0 ? nuH * R * lap : 0);
+            double g2 = TM.G2(dmx, dpx, dmy, dpy);
+            double lap = TM.Lap(pl, pr, pd, pu, p, inv2);
+            @out[a] = TM.Tend(R, g2, lap < 0 ? TM.Visc(nuH, R, lap) : 0);
             if (stage1)
             {
                 r1[a] = (float)R;
@@ -489,7 +532,7 @@ public sealed class LevelSetCore
                     continue;
                 }
             }
-            double m = EvalRange<NoHooks>(a, a + 1, src, @out, stage1, false);
+            double m = EvalRange<NoHooks, LiteralEval>(a, a + 1, src, @out, stage1, false);
             if (m > maxC) maxC = m;
             a++;
         }

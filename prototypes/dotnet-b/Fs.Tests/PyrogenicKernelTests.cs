@@ -194,6 +194,106 @@ public sealed class PyrogenicKernelTests
         Assert.IsTrue(worst < 1e-9 * scale + 1e-12, $"max |laplacian psi + k q| {worst:E3} against scale {scale:E3}");
     }
 
+    // ───────────────────────────── mutation checks of the solve ─────────────────────────────
+
+    readonly struct PyReverse : IPyroOps // the rows of every accumulation added in descending order
+    {
+        public static bool ReverseRows => true;
+        public static double Scale(double psi, double f, double lamX, double lamY) => PyroLiteral.Scale(psi, f, lamX, lamY);
+        public static double Lerp(double g0, double g1, double g2, double g3, double tx, double ty) => PyroLiteral.Lerp(g0, g1, g2, g3, tx, ty);
+    }
+
+    readonly struct PyScale : IPyroOps // psi * (f / (lamX + lamY)) instead of (psi * f) / (lamX + lamY)
+    {
+        public static bool ReverseRows => false;
+        public static double Scale(double psi, double f, double lamX, double lamY) => psi * (f / (lamX + lamY));
+        public static double Lerp(double g0, double g1, double g2, double g3, double tx, double ty) => PyroLiteral.Lerp(g0, g1, g2, g3, tx, ty);
+    }
+
+    readonly struct PyLerp : IPyroOps // the bilinear weights multiplied out: g0 (1-tx)(1-ty) + g1 tx (1-ty) + g2 (1-tx) ty + g3 tx ty
+    {
+        public static bool ReverseRows => false;
+        public static double Scale(double psi, double f, double lamX, double lamY) => PyroLiteral.Scale(psi, f, lamX, lamY);
+        public static double Lerp(double g0, double g1, double g2, double g3, double tx, double ty) => g0 * (1 - tx) * (1 - ty) + g1 * tx * (1 - ty) + g2 * (1 - tx) * ty + g3 * tx * ty;
+    }
+
+    readonly struct PySwap : IPyroOps // NOT a mutation: operands of single + and * swapped (the bits must be identical)
+    {
+        public static bool ReverseRows => false;
+        public static double Scale(double psi, double f, double lamX, double lamY) => (f * psi) / (lamY + lamX);
+        public static double Lerp(double g0, double g1, double g2, double g3, double tx, double ty) => (1 - ty) * ((1 - tx) * g0 + tx * g1) + ty * ((1 - tx) * g2 + tx * g3);
+    }
+
+    static Dictionary<string, string> PyHashes<TM>(PyrogenicKernel k, float[] q) where TM : struct, IPyroOps
+    {
+        k.SolveWith<TM>(q);
+        return new Dictionary<string, string> { ["psi"] = FastCaseRunner.Hash(k.Psi), ["gx"] = FastCaseRunner.Hash(k.Gx), ["gy"] = FastCaseRunner.Hash(k.Gy), ["up"] = FastCaseRunner.Hash(k.Up), ["vp"] = FastCaseRunner.Hash(k.Vp) };
+    }
+
+    [TestMethod]
+    public void OperandOrderSlipsInTheSolveAreCaughtOnTheRealFieldsAndAHarmlessSwapIsNot()
+    {
+        // psi, gx and gy are Float64 (the doubles the arithmetic produced); u_p and v_p are float32 stores of the interpolated gradient, which may hide a slip in the interpolation.
+        string[] names = ["reverse", "scale", "lerp", "swap"];
+        var caughtBy = names.ToDictionary(n => n, _ => new SortedSet<string>());
+        var caughtFields = names.ToDictionary(n => n, _ => 0);
+        int fields = 0;
+        foreach (string name in new[] { "k6f-900", "k6f-late" })
+        {
+            var data = FastTestData.Files.TryLoad(name);
+            if (data is null) { Assert.Inconclusive("fixture missing"); return; }
+            JsonElement golden = FastTestData.Golden(name);
+            var meta = FastCaseRunner.ReadMeta(golden.GetProperty("meta"));
+            JsonElement c = golden.GetProperty("cases").EnumerateArray().First(x => x.GetProperty("kind").GetString() == "pyro");
+            JsonElement plain = c.GetProperty("variants")[0].GetProperty("result");
+            float[] q = data.F32(c.GetProperty("q").GetString()!);
+            var control = PyHashes<PyroLiteral>(FastCaseRunner.NewPyro(meta, c), q);
+            foreach (string key in control.Keys) Assert.AreEqual(plain.GetProperty(key).GetString(), control[key], $"control {name} {key}");
+            fields++;
+            void Compare(string mutant, Dictionary<string, string> m)
+            {
+                bool any = false;
+                foreach (string key in control.Keys)
+                    if (m[key] != control[key]) { caughtBy[mutant].Add(key); any = true; }
+                if (any) caughtFields[mutant]++;
+            }
+            Compare("reverse", PyHashes<PyReverse>(FastCaseRunner.NewPyro(meta, c), q));
+            Compare("scale", PyHashes<PyScale>(FastCaseRunner.NewPyro(meta, c), q));
+            Compare("lerp", PyHashes<PyLerp>(FastCaseRunner.NewPyro(meta, c), q));
+            Compare("swap", PyHashes<PySwap>(FastCaseRunner.NewPyro(meta, c), q));
+            // why "lerp" hides: count, over the fire cells, how often the two interpolations differ as doubles and how often after the float32 store
+            var kk = FastCaseRunner.NewPyro(meta, c);
+            kk.SolveWith<PyroLiteral>(q);
+            long cells = 0, dblDiff = 0, f32Diff = 0;
+            for (int j = 0; j < kk.FireNy; j++)
+            {
+                double fy = Math.Min(Math.Max((j + 0.5) / 2 - 0.5, 0), kk.Ny - 1);
+                int J0 = Math.Min((int)Math.Floor(fy), Math.Max(0, kk.Ny - 2));
+                double ty = fy - J0;
+                for (int i = 0; i < kk.FireNx; i++)
+                {
+                    double fx = Math.Min(Math.Max((i + 0.5) / 2 - 0.5, 0), kk.Nx - 1);
+                    int I0 = Math.Min((int)Math.Floor(fx), Math.Max(0, kk.Nx - 2));
+                    double tx = fx - I0;
+                    int c0 = J0 * kk.Nx + I0, c1 = kk.Nx > 1 ? c0 + 1 : c0, c2 = kk.Ny > 1 ? c0 + kk.Nx : c0, c3 = kk.Nx > 1 && kk.Ny > 1 ? c0 + kk.Nx + 1 : c0;
+                    double a = PyroLiteral.Lerp(kk.Gx[c0], kk.Gx[c1], kk.Gx[c2], kk.Gx[c3], tx, ty), b = PyLerp.Lerp(kk.Gx[c0], kk.Gx[c1], kk.Gx[c2], kk.Gx[c3], tx, ty);
+                    cells++;
+                    if (a != b) dblDiff++;
+                    if ((float)a != (float)b) f32Diff++;
+                }
+            }
+            FastTestData.Note($"pyrogenic lerp mutant, {name}: u differs as a double in {dblDiff} of {cells} fire cells, after the float32 store in {f32Diff} (before the 5 m/s cap)");
+        }
+        foreach (string n in names) FastTestData.Note($"pyrogenic mutant {n}: differs on {caughtFields[n]} of {fields} real fields, in outputs [{string.Join(",", caughtBy[n])}]");
+        Assert.AreEqual(2, fields);
+        Assert.AreEqual(0, caughtFields["swap"], "a commutative swap changes no bit");
+        foreach (string n in new[] { "reverse", "scale" })
+            Assert.IsTrue(caughtFields[n] >= 1, $"mutant {n} was not caught by any real field");
+        // The interpolation mutant ("lerp") is NOT caught on these fields: u and v are doubles that are stored straight into the float32 u_p and v_p, and that store rounds the one-ulp
+        // double difference away on every cell of both real fields (T1.4a's finding again). What pins that expression is the structure (the test of the literal port against the TypeScript's
+        // bits, which uses the same expression in the same order), not this mutant. Recorded, not asserted either way, so that a future change of data that does catch it does not fail the build.
+    }
+
     [TestMethod]
     public void ScalarAndVectorFormsAllocateNothingPerSolve()
     {

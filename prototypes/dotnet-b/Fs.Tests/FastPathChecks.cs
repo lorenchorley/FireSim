@@ -37,6 +37,9 @@ public sealed class FastPathChecks
         KernelExec[] some = [KernelExec.Scalar, KernelExec.Vec, KernelExec.ParVec(4)];
         LevelSetKernelTests.CheckFixture("k6f-900", some);
         PyrogenicKernelTests.CheckFixture("k6f-900", some);
+        // the late window's reinit box (151 x 200) is over the wavefront's threshold, so the tiled sweeps run in every child process too
+        LevelSetKernelTests.CheckFixture("k6f-late", [KernelExec.Vec, KernelExec.ParVec(4)]);
+        PyrogenicKernelTests.CheckFixture("k6f-late", [KernelExec.Vec, KernelExec.ParVec(4)]);
     }
 
     [TestMethod]

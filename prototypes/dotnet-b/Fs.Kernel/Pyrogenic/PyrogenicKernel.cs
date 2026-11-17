@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Fs.Kernel.Air;
@@ -11,6 +12,25 @@ public enum SimdMode
     Scalar,
     /// <summary>Explicit <c>Vector128&lt;double&gt;</c>, partial sums held in registers across all rows. The only width a phone (ARM64 NEON) and WebAssembly accelerate, and the only one the plan allows (section 9).</summary>
     V128,
+}
+
+/// <summary>The arithmetic of <c>solve</c> that an operand-order slip could change, as a seam for the mutation tests (Fs.Tests/PyrogenicKernelTests): the kernel uses <see cref="PyroLiteral"/> (the TypeScript's expressions); a test passes a mutated copy to <see cref="PyrogenicKernel.SolveWith{TM}"/>. Specialised by the JIT: no cost in the real path.</summary>
+public interface IPyroOps
+{
+    /// <summary>true: the row accumulation adds the contributing rows in descending order instead of ascending (a mutation of the sum order).</summary>
+    static abstract bool ReverseRows { get; }
+    /// <summary><c>(psi * f) / (lamX + lamY)</c>.</summary>
+    static abstract double Scale(double psi, double f, double lamX, double lamY);
+    /// <summary>The bilinear interpolation <c>(g0 (1 - tx) + g1 tx) (1 - ty) + (g2 (1 - tx) + g3 tx) ty</c>.</summary>
+    static abstract double Lerp(double g0, double g1, double g2, double g3, double tx, double ty);
+}
+
+/// <summary>The TypeScript's expressions, in its operation order.</summary>
+public readonly struct PyroLiteral : IPyroOps
+{
+    public static bool ReverseRows => false;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double Scale(double psi, double f, double lamX, double lamY) => (psi * f) / (lamX + lamY);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double Lerp(double g0, double g1, double g2, double g3, double tx, double ty) => (g0 * (1 - tx) + g1 * tx) * (1 - ty) + (g2 * (1 - tx) + g3 * tx) * ty;
 }
 
 /// <summary>
@@ -87,12 +107,12 @@ public sealed class PyrogenicKernel
         _chunksCoarse = (Ny + ChunkRows - 1) / ChunkRows;
         _chunksFire = (FireNy + ChunkRows - 1) / ChunkRows;
         _chunkAny = new bool[_chunksCoarse];
-        _dFirst = c => { int r0 = c * ChunkRows, r1 = Math.Min(Ny, r0 + ChunkRows); Coarsen(r0, r1, c); ForwardX(r0, r1); };
-        _dY = c => TransformYScale(c * ChunkRows, Math.Min(Ny, (c + 1) * ChunkRows));
-        _dInvY = c => InverseY(c * ChunkRows, Math.Min(Ny, (c + 1) * ChunkRows));
-        _dInvX = c => InverseX(c * ChunkRows, Math.Min(Ny, (c + 1) * ChunkRows));
+        _dFirst = c => { int r0 = c * ChunkRows, r1 = Math.Min(Ny, r0 + ChunkRows); Coarsen(r0, r1, c); ForwardX<PyroLiteral>(r0, r1); };
+        _dY = c => TransformYScale<PyroLiteral>(c * ChunkRows, Math.Min(Ny, (c + 1) * ChunkRows));
+        _dInvY = c => InverseY<PyroLiteral>(c * ChunkRows, Math.Min(Ny, (c + 1) * ChunkRows));
+        _dInvX = c => InverseX<PyroLiteral>(c * ChunkRows, Math.Min(Ny, (c + 1) * ChunkRows));
         _dGrad = c => Gradient(c * ChunkRows, Math.Min(Ny, (c + 1) * ChunkRows));
-        _dFire = c => ToFire(c * ChunkRows, Math.Min(FireNy, (c + 1) * ChunkRows));
+        _dFire = c => ToFire<PyroLiteral>(c * ChunkRows, Math.Min(FireNy, (c + 1) * ChunkRows));
     }
 
     /// <summary>The sine basis, its inverse squared norm and the eigenvalue factor (the TypeScript's <c>Dst</c>). Tests compare the tables with the TypeScript's.</summary>
@@ -134,14 +154,7 @@ public sealed class PyrogenicKernel
         if (threads == 0)
         {
             // serial: straight-line phases over the whole row range, no delegates, no allocation
-            Coarsen(0, Ny, 0);
-            ForwardX(0, Ny);
-            if (!AnySource()) { ClearOutputs(); return; }
-            TransformYScale(0, Ny);
-            InverseY(0, Ny);
-            InverseX(0, Ny);
-            Gradient(0, Ny);
-            ToFire(0, FireNy);
+            Serial<PyroLiteral>();
             return;
         }
         // 1+2. coarsen and forward x transform of the same coarse rows (row J of the transform needs only row J of the coarse source: one phase, one barrier)
@@ -152,6 +165,28 @@ public sealed class PyrogenicKernel
         KernelPar.Chunks(_chunksCoarse, threads, _dInvX);  // 5. inverse x transform (reads tmp, writes Psi)
         KernelPar.Chunks(_chunksCoarse, threads, _dGrad);  // 6. gradient on the coarse grid
         KernelPar.Chunks(_chunksFire, threads, _dFire);    //    bilinear to the fire grid with the cap
+    }
+
+    void Serial<TM>() where TM : struct, IPyroOps
+    {
+        Coarsen(0, Ny, 0);
+        ForwardX<TM>(0, Ny);
+        if (!AnySource()) { ClearOutputs(); return; }
+        TransformYScale<TM>(0, Ny);
+        InverseY<TM>(0, Ny);
+        InverseX<TM>(0, Ny);
+        Gradient(0, Ny);
+        ToFire<TM>(0, FireNy);
+    }
+
+    /// <summary>Serial scalar solve with another arithmetic (<see cref="IPyroOps"/>): only for the mutation test.</summary>
+    public void SolveWith<TM>(float[] q) where TM : struct, IPyroOps
+    {
+        if (q.Length != FireNx * FireNy) throw new ArgumentException("q has the wrong length");
+        _src = q;
+        _vec = false;
+        Array.Clear(_chunkAny);
+        Serial<TM>();
     }
 
     bool AnySource()
@@ -204,7 +239,7 @@ public sealed class PyrogenicKernel
     }
 
     // t[J][:] = sum_i q[J][i] * SxT[i][:] (skipping zero entries, i ascending), then * invNorm_x; rows with no source are 0
-    void ForwardX(int J0, int J1)
+    void ForwardX<TM>(int J0, int J1) where TM : struct, IPyroOps
     {
         for (int J = J0; J < J1; J++)
         {
@@ -213,35 +248,35 @@ public sealed class PyrogenicKernel
             byte has = 0;
             for (int i = 0; i < Nx; i++) if (_q[r + i] != 0) { has = 1; break; }
             _rowHas[J] = has;
-            AccumRows(trow, _q, r, 1, Nx, _sxT, Nx, null, skipZero: true);
+            AccumRows<TM>(trow, _q, r, 1, Nx, _sxT, Nx, null, skipZero: true);
             if (has != 0) for (int p = 0; p < trow.Length; p++) trow[p] = trow[p] * _invNx[p];
         }
     }
 
     // psi[qy][:] = sum_{J with source} Sy[qy][J] * t[J][:] (J ascending), then (psi * (invNorm_y[qy] h^2)) / (lamX[p] + lamY[qy])
-    void TransformYScale(int r0, int r1)
+    void TransformYScale<TM>(int r0, int r1) where TM : struct, IPyroOps
     {
         for (int qy = r0; qy < r1; qy++)
         {
             var prow = Psi.AsSpan(qy * Nx, Nx);
-            AccumRows(prow, _sy, qy * Ny, 1, Ny, _tmp, Nx, _rowHas, skipZero: false);
+            AccumRows<TM>(prow, _sy, qy * Ny, 1, Ny, _tmp, Nx, _rowHas, skipZero: false);
             double f = _invNy[qy] * H * H;
             double lamY = _lamY[qy];
-            for (int p = 0; p < prow.Length; p++) prow[p] = (prow[p] * f) / (_lamX[p] + lamY);
+            for (int p = 0; p < prow.Length; p++) prow[p] = TM.Scale(prow[p], f, _lamX[p], lamY);
         }
     }
 
     // t[J][:] = sum_{qy ascending} Sy[qy][J] * psi_hat[qy][:]  (the TypeScript loops qy outermost; each element still sums over qy in ascending order)
     // Reads Psi (psi_hat), writes _tmp; InverseX then overwrites Psi from _tmp: separate phases with a barrier between.
-    void InverseY(int r0, int r1)
+    void InverseY<TM>(int r0, int r1) where TM : struct, IPyroOps
     {
-        for (int J = r0; J < r1; J++) AccumRows(_tmp.AsSpan(J * Nx, Nx), _sy, J, Ny, Ny, Psi, Nx, null, skipZero: false);
+        for (int J = r0; J < r1; J++) AccumRows<TM>(_tmp.AsSpan(J * Nx, Nx), _sy, J, Ny, Ny, Psi, Nx, null, skipZero: false);
     }
 
     // psi[J][:] = sum_p t[J][p] * Sx[p][:]  (p ascending)
-    void InverseX(int r0, int r1)
+    void InverseX<TM>(int r0, int r1) where TM : struct, IPyroOps
     {
-        for (int J = r0; J < r1; J++) AccumRows(Psi.AsSpan(J * Nx, Nx), _tmp, J * Nx, 1, Nx, _sx, Nx, null, skipZero: false);
+        for (int J = r0; J < r1; J++) AccumRows<TM>(Psi.AsSpan(J * Nx, Nx), _tmp, J * Nx, 1, Nx, _sx, Nx, null, skipZero: false);
     }
 
     // central differences of psi with ghost value -psi beyond the boundary
@@ -264,7 +299,7 @@ public sealed class PyrogenicKernel
     }
 
     // bilinear from the coarse gradient to the fire cell centres, capped
-    void ToFire(int j0, int j1)
+    void ToFire<TM>(int j0, int j1) where TM : struct, IPyroOps
     {
         for (int j = j0; j < j1; j++)
         {
@@ -280,8 +315,8 @@ public sealed class PyrogenicKernel
                 int c1 = Nx > 1 ? c + 1 : c;
                 int c2 = Ny > 1 ? c + Nx : c;
                 int c3 = Nx > 1 && Ny > 1 ? c + Nx + 1 : c;
-                double u = (Gx[c] * (1 - tx) + Gx[c1] * tx) * (1 - ty) + (Gx[c2] * (1 - tx) + Gx[c3] * tx) * ty;
-                double v = (Gy[c] * (1 - tx) + Gy[c1] * tx) * (1 - ty) + (Gy[c2] * (1 - tx) + Gy[c3] * tx) * ty;
+                double u = TM.Lerp(Gx[c], Gx[c1], Gx[c2], Gx[c3], tx, ty);
+                double v = TM.Lerp(Gy[c], Gy[c1], Gy[c2], Gy[c3], tx, ty);
                 double sp = Math.Sqrt(u * u + v * v);
                 if (sp > _cap)
                 {
@@ -300,22 +335,23 @@ public sealed class PyrogenicKernel
     // skipping rows whose mask byte is 0 (mask given) or whose coefficient is 0 (skipZero). y is overwritten (its old contents never matter).
     // ------------------------------------------------------------------------------------------------------------------------------------------
 
-    void AccumRows(Span<double> y, double[] coef, int cs, int cstride, int count, double[] x, int xstride, byte[]? mask, bool skipZero)
+    void AccumRows<TM>(Span<double> y, double[] coef, int cs, int cstride, int count, double[] x, int xstride, byte[]? mask, bool skipZero) where TM : struct, IPyroOps
     {
         // validated once per call: every offset the width-specific code forms is inside the arrays (count rows, y.Length columns)
         int n = y.Length;
         if (count > 0 && (cs < 0 || cs + (count - 1) * cstride >= coef.Length || (count - 1) * xstride + n > x.Length || (mask != null && mask.Length < count)))
             throw new ArgumentOutOfRangeException(nameof(count));
         if (_vec && n >= Vector128<double>.Count) { Accum128(y, coef, cs, cstride, count, x, xstride, mask, skipZero); return; }
-        AccumAxpy(y, coef, cs, cstride, count, x, xstride, mask, skipZero);
+        AccumAxpy<TM>(y, coef, cs, cstride, count, x, xstride, mask, skipZero);
     }
 
     // the literal port (and the small-input fallback): clear, then one axpy per contributing row
-    static void AccumAxpy(Span<double> y, double[] coef, int cs, int cstride, int count, double[] x, int xstride, byte[]? mask, bool skipZero)
+    static void AccumAxpy<TM>(Span<double> y, double[] coef, int cs, int cstride, int count, double[] x, int xstride, byte[]? mask, bool skipZero) where TM : struct, IPyroOps
     {
         y.Clear();
-        for (int i = 0; i < count; i++)
+        for (int n = 0; n < count; n++)
         {
+            int i = TM.ReverseRows ? count - 1 - n : n;
             if (mask != null && mask[i] == 0) continue;
             double c = coef[cs + i * cstride];
             if (skipZero && c == 0) continue;
