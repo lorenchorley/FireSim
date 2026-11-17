@@ -88,7 +88,7 @@ function summarize(rs: (CaseResult | FastCaseResult)[]): { cases: number; checks
   for (const r of rs) {
     checks += r.checks;
     mism += r.mismatches.length;
-    if (r.mismatches.length) failed.push({ id: r.id, mismatches: r.mismatches.slice(0, 6) });
+    if (r.mismatches.length) failed.push({ id: r.id, mismatches: r.mismatches.slice(0, 40) });
   }
   // a digest of every hash this implementation computed, whatever the goldens say: two arms in ONE engine are compared by it (Chromium's Math differs from Node's)
   const digest = hex(sha256(new TextEncoder().encode(JSON.stringify(rs.map((r) => [r.id, r.actual])))), 16);

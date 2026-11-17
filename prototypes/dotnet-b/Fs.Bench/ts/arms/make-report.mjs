@@ -56,20 +56,21 @@ const out = (s = '') => { md += s + '\n'; };
 
 // ───────── 1. hash equality ─────────
 out('## Hash equality\n');
-out('| engine | arm | workers | problem | cases | hash checks | mismatches against the golden (Node 22) hashes | digest of every hash it computed |');
-out('|---|---|---:|---|---:|---:|---:|---|');
+out('One row = every verify run of one engine and problem: the app kernels in one worker and the pool on 1, 2, 4, 8 workers, each with the default thresholds and with the chunked paths forced (10 runs). The digest is a hash of every hash the run computed; "digests" counts how many different ones the 10 runs gave.\n');
+out('| engine | problem | runs | cases per run | hash checks per run | mismatches against the golden (Node 22) hashes, all runs | digests |');
+out('|---|---|---:|---:|---:|---:|---:|');
 const ver = docs.filter((d) => d.f.startsWith('verify-'));
-const digestsByGroup = new Map();
-for (const d of ver.sort((a, b) => a.f.localeCompare(b.f))) {
-  const v = d.result.verify;
-  const forced = d.f.includes('-forced');
-  out(`| ${d.runtime} | ${d.arm === 'app' ? 'app kernels (a)' : 'pool (b)'}${forced ? ', chunks forced' : ''} | ${d.arm === 'app' ? 1 : d.threads} | ${d.problem} | ${v.cases} | ${v.checks} | ${v.mismatches} | \`${v.digest}\` |`);
-  const gk = `${d.runtime}|${d.problem}|${forced}`;
-  if (!digestsByGroup.has(gk)) digestsByGroup.set(gk, new Set());
-  digestsByGroup.get(gk).add(v.digest);
+const groups = new Map();
+for (const d of ver) {
+  const k = `${d.runtime}|${d.problem}`;
+  if (!groups.has(k)) groups.set(k, []);
+  groups.get(k).push(d);
+}
+for (const [k, g] of [...groups].sort((a, b) => a[0].localeCompare(b[0]))) {
+  const [engine, problem] = k.split('|');
+  out(`| ${engine} | ${problem} | ${g.length} | ${g[0].result.verify.cases} | ${g[0].result.verify.checks} | ${g.reduce((a, d) => a + d.result.verify.mismatches, 0)} | ${new Set(g.map((d) => d.result.verify.digest)).size} |`);
 }
 out('');
-out('Digests per (engine, problem, forced): ' + [...digestsByGroup].map(([k, s]) => `${k}: ${s.size === 1 ? 'one digest for every arm and every worker count' : `${s.size} DIFFERENT digests`}`).join('; ') + '\n');
 
 // ───────── 2. timing per kernel ─────────
 const best = {}; // for the ratio table: problem|kernel -> { nodeBest:{arm,ms}, chrBest:{arm,ms} }
@@ -160,6 +161,33 @@ out('| problem | kernel | best Chromium arm | TS ms | vs best C# form (native) |
 out('|---|---|---|---:|---:|');
 for (const r of ratioRows) if (r.chromiumBest) out(`| ${r.p} | ${r.k} | ${r.chromiumBest.arm} | ${fmt(r.chromiumBest.ms)} | ${fmt(r.chromiumBest.ms / Math.min(...Object.values(r.csMs)), 2)} |`);
 
+// ───────── 5b. projection ─────────
+// T1.1's shares of the step (reports/1-profile.md; quoted in 1-air-kernels.md section 5 and 1-fast-kernels.md section 6). Everything not listed is "no faster" in every arm.
+const shares = [
+  { name: 'standard tier (katoomba3-standard, 30x30x20)', p: 'air:k3std', items: [['relax', ['relax'], 0.151], ['advect', ['advect'], 0.093], ['divergence', ['divergenceF32'], 0.054], ['gradient', ['gradient'], 0.050]], bar: 1.5 },
+  { name: 'fast tier, 30-minute shares, 900 s frame', p: 'fast:k6f-900', items: [['evaluate', ['evalStage1', 'evalStage2'], 0.030], ['reinit', ['reinit'], 0.029], ['pyrogenic solve', ['pyro'], 0.084]], bar: 1.2 },
+  { name: 'fast tier, 4-hour shares, 14,100 s frame', p: 'fast:k6f-late', items: [['evaluate', ['evalStage1', 'evalStage2'], 0.136], ['reinit', ['reinit'], 0.101], ['pyrogenic solve', ['pyro'], 0.092]], bar: 1.2 },
+];
+const projection = [];
+out("\n## Projected whole-step effect of the kernels (arithmetic on T1.1's shares; every other phase of the step taken as no faster in every arm)\n");
+out("A kernel's time is taken as a fraction of its time in the app kernels in one worker (this run). New step = 1 - sum of shares + sum of share x fraction. \"C# best forms\" = the fastest of the four C# forms per kernel (earlier BenchmarkDotNet runs); \"best TypeScript\" = the fastest Node arm per kernel (app kernels in one worker, or the pool on 1, 2, 4, 8 workers).\n");
+out("| tier | C# scalar over TypeScript one worker | C# best forms over TypeScript one worker | best TypeScript over TypeScript one worker | **C# best forms over best TypeScript** | Gate 1 bar (over the best TypeScript arm) | the kernels' Amdahl ceiling |");
+out('|---|---:|---:|---:|---:|---:|---:|');
+for (const t of shares) {
+  let fScalar = 1, fCs = 1, fTs = 1, tot = 0;
+  const parts = [];
+  for (const [label, ks, sh] of t.items) {
+    const a = ks.reduce((x, k) => x + netMed('main', 'v8-node', 'app', t.p, k), 0);
+    const b = ks.reduce((x, k) => x + (best[`${t.p}|${k}`]?.node.ms ?? NaN), 0);
+    const cS = ks.reduce((x, k) => x + csTime(t.p, k, 'Scalar'), 0);
+    const cB = ks.reduce((x, k) => x + Math.min(...forms.map((f) => csTime(t.p, k, f))), 0);
+    fScalar += sh * (cS / a - 1); fCs += sh * (cB / a - 1); fTs += sh * (b / a - 1); tot += sh;
+    parts.push({ kernel: label, share: sh, appMs: a, bestTsMs: b, csScalarMs: cS, csBestMs: cB });
+  }
+  projection.push({ tier: t.name, problem: t.p, csScalarOverTs1: 1 / fScalar, csBestOverTs1: 1 / fCs, bestTsOverTs1: 1 / fTs, csBestOverBestTs: fTs / fCs, bar: t.bar, ceiling: 1 / (1 - tot), parts });
+  out(`| ${t.name} | ${fmt(1 / fScalar, 3)}x | ${fmt(1 / fCs, 3)}x | ${fmt(1 / fTs, 3)}x | **${fmt(fTs / fCs, 3)}x** | ${t.bar}x | ${fmt(1 / (1 - tot), 3)}x |`);
+}
+
 // ───────── 6. spin ─────────
 const spin = docs.filter((d) => d.f.startsWith('spin-'));
 if (spin.length) {
@@ -177,7 +205,7 @@ fs.writeFileSync(path.join(resDir, 'tables.md'), md);
 console.log(md);
 
 // ───────── JSON ─────────
-const host = docs.find((d) => d.host)?.host ?? {};
+const host = docs.find((d) => d.host?.node)?.host ?? {};
 const chr = docs.find((d) => d.browser);
 const runs = [];
 for (const e of agg.values()) {
@@ -200,7 +228,8 @@ const doc = {
   runs,
   hashChecks: hashRuns,
   tsVsCsharp: ratioRows,
-  conditions: condFile && fs.existsSync(condFile) ? JSON.parse(fs.readFileSync(condFile, 'utf8')) : undefined,
+  projection,
+  conditions: condFile && fs.existsSync(condFile) ? (condFile.endsWith('.log') ? { loadAverageLog: fs.readFileSync(condFile, 'utf8').split('\n').filter(Boolean) } : JSON.parse(fs.readFileSync(condFile, 'utf8'))) : undefined,
   gate: { bar: 'Gate 1: native C# against the best TypeScript arm (standard tier 1.5x, fast tier 1.2x of the whole step); Gate 1W: C# WebAssembly at most 1.25x the TypeScript worker', measured: 'kernel level only (this card builds the opponents; the ratios are in tsVsCsharp)', result: 'not run', why: 'both gates are defined on the whole step (T1.7, T6.4, T6.6); T1.5 (a)-(c) supplies the TypeScript arms' },
   notRun: ['Android WebView and the phone (round 1)', 'whole-step timing of the pool forms (kernels only)', 'Firefox and Safari engines'],
 };
