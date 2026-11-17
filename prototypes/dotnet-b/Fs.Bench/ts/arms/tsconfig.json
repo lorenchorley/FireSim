@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../tsconfig.json",
+  "compilerOptions": { "noUncheckedIndexedAccess": true, "baseUrl": "../../../../..", "types": ["node"] },
+  "include": ["./*.ts"]
+}
