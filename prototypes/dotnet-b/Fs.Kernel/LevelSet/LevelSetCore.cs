@@ -506,37 +506,35 @@ public sealed class LevelSetCore
         double nu = P.Nu;
         double nuH = nu * h;
         double nu4 = 4 * nu;
-        var vzero = Vector128<double>.Zero;
-        var vone = Vector128.Create(1.0);
-        var vinv = Vector128.Create(inv);
-        var vhalf = Vector128.Create(half);
-        var vinv2 = Vector128.Create(inv2);
-        var vnuH = Vector128.Create(nuH);
-        var vnu4 = Vector128.Create(nu4);
-        var veps = Vector128.Create(P.NormalEps);
-        var vrMax = Vector128.Create(P.RosMaxMs);
-        var vfour = Vector128.Create(4.0);
+        double eps = P.NormalEps;
+        double rMax = P.RosMaxMs;
         int[] band = Band;
         byte[] edge = _edge;
         double maxC = 0;
         int a = a0;
         while (a < a1)
         {
-            if (a + 1 < a1)
+            if (a + 1 < a1 && IsPair(a, band, edge, src, ext))
             {
-                int k0 = band[a], k1 = band[a + 1];
-                if ((edge[k0] | edge[k1]) == 0 && IsMoving(k0, src, ext) && IsMoving(k1, src, ext))
-                {
-                    Pair(a, k0, k1, src, @out, stage1, ext, nx, ref maxC, vzero, vone, vinv, vhalf, vinv2, vnuH, vnu4, veps, vrMax, vfour);
-                    a += 2;
-                    continue;
-                }
+                Pair(a, band[a], band[a + 1], src, @out, stage1, ext, nx, ref maxC, inv, half, inv2, nuH, nu4, eps, rMax);
+                a += 2;
+                continue;
             }
-            double m = EvalRange<NoHooks, LiteralEval>(a, a + 1, src, @out, stage1, false);
+            // a run of cells that do not pair (burnt arrival cells, edge cells, all-zero cells) goes to the scalar body in one call, not one call each
+            int b = a + 1;
+            while (b < a1 && !(b + 1 < a1 && IsPair(b, band, edge, src, ext))) b++;
+            double m = EvalRange<NoHooks, LiteralEval>(a, b, src, @out, stage1, false);
             if (m > maxC) maxC = m;
-            a++;
+            a = b;
         }
         return maxC;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    bool IsPair(int a, int[] band, byte[] edge, double[] src, bool ext)
+    {
+        int k0 = band[a], k1 = band[a + 1];
+        return (edge[k0] | edge[k1]) == 0 && IsMoving(k0, src, ext) && IsMoving(k1, src, ext);
     }
 
     // a cell the scalar body would carry past the two `continue` shortcuts before the speed: not (burnt with a stored arrival speed), and not all-zero coefficients
@@ -548,10 +546,19 @@ public sealed class LevelSetCore
         return !(W(SA2, k) == 0 && W(SB2, k) == 0 && W(SVls, k) == 0);
     }
 
-    void Pair(int a, int k0, int k1, double[] src, double[]? @out, bool stage1, bool ext, int nx, ref double maxC,
-        Vector128<double> vzero, Vector128<double> vone, Vector128<double> vinv, Vector128<double> vhalf, Vector128<double> vinv2, Vector128<double> vnuH, Vector128<double> vnu4,
-        Vector128<double> veps, Vector128<double> vrMax, Vector128<double> vfour)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    void Pair(int a, int k0, int k1, double[] src, double[]? @out, bool stage1, bool ext, int nx, ref double maxC, double inv, double half, double inv2, double nuH, double nu4, double eps, double rMax)
     {
+        var vzero = Vector128<double>.Zero;
+        var vone = Vector128.Create(1.0);
+        var vinv = Vector128.Create(inv);
+        var vhalf = Vector128.Create(half);
+        var vinv2 = Vector128.Create(inv2);
+        var vnuH = Vector128.Create(nuH);
+        var vnu4 = Vector128.Create(nu4);
+        var veps = Vector128.Create(eps);
+        var vrMax = Vector128.Create(rMax);
+        var vfour = Vector128.Create(4.0);
         Vector128<double> p = G(src, k0, k1);
         Vector128<double> burntExt = ext ? Vector128.OnesComplement(Vector128.GreaterThan(p, vzero)) : vzero; // all-ones lanes where `ext && !(p > 0)`
         Vector128<double> pl = G(src, k0 - 1, k1 - 1), pr = G(src, k0 + 1, k1 + 1), pd = G(src, k0 - nx, k1 - nx), pu = G(src, k0 + nx, k1 + nx);

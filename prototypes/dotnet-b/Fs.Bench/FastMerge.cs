@@ -14,7 +14,7 @@ namespace Fs.Bench;
 /// T1.4b: the thread curve (a stopwatch loop, medians over single operations) and the merge of BenchmarkDotNet's full JSON with the Node harness's JSON into
 /// <c>reports/1-fast-kernels.json</c> and the Markdown tables of the report.
 ///   Fs.Bench fast-threads OUT.json                                    thread counts 1, 2, 4, 8 on both fixtures, default and forced thresholds
-///   Fs.Bench fast-merge BDN.json TS_900_RUNS TS_LATE_RUNS OUT.json [CONDITIONS.json] [THREADS.json]   (TS_*_RUNS: comma-separated Node result files, one per run)
+///   Fs.Bench fast-merge BDN.json[,BDN2.json...] TS_900_RUNS TS_LATE_RUNS OUT.json [CONDITIONS.json] [THREADS.json]   (TS_*_RUNS: comma-separated Node result files, one per run)
 /// </summary>
 public static class FastMerge
 {
@@ -58,7 +58,7 @@ public static class FastMerge
         foreach (string fixture in new[] { "k6f-900", "k6f-late" })
             foreach (bool forced in new[] { false, true })
             {
-                var o = new FastOps(fixture);
+                var o = FastOpsFactory.Create(fixture);
                 if (forced) { o.Ls1.MinParallelBand = 0; o.Ls2.MinParallelBand = 0; o.Ls3.MinParallelBox = 0; o.Ls3.MinParallelBand = 0; }
                 var kernels = new (string Name, Func<KernelExec, double> Run)[]
                 {
@@ -78,6 +78,17 @@ public static class FastMerge
             }
         File.WriteAllText(args[0], new JsonObject { ["when"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture), ["cores"] = Environment.ProcessorCount, ["method"] = "stopwatch, 400 single operations after 400 ms warm-up, median", ["cells"] = results }.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine(md.ToString());
+        return 0;
+    }
+
+    /// <summary>A scratch probe for the developer (not part of any result): reinit with the float32 and the double distance array, evaluate, on both fixtures, scalar.</summary>
+    public static int Diag(string[] args)
+    {
+        foreach (string fixture in new[] { "k6f-900", "k6f-late" })
+        {
+            var o = FastOpsFactory.Create(fixture);
+            Console.WriteLine($"{fixture}: reinit float32 dist {Median(() => o.Reinit(KernelExec.Scalar)):F4} ms; reinit double dist {Median(() => { o.Restore(); o.Ls3.ReinitWide(KernelExec.Scalar); return o.Ls3.BandCount; }):F4} ms; restore {Median(() => o.Restore()):F4} ms; evalStage1 {Median(() => o.Eval1(KernelExec.Scalar)):F4} ms; evalStage1 vector {Median(() => o.Eval1(KernelExec.Vec)):F4} ms; evalStage2 {Median(() => o.Eval2(KernelExec.Scalar)):F4} ms");
+        }
         return 0;
     }
 
@@ -109,8 +120,12 @@ public static class FastMerge
 
     public static int Run(string[] args)
     {
-        if (args.Length < 4) { Console.Error.WriteLine("usage: fast-merge BDN.json TS_900_RUNS TS_LATE_RUNS OUT.json [CONDITIONS.json] [THREADS.json]"); return 2; }
-        var bdn = JsonNode.Parse(File.ReadAllText(args[0]))!;
+        if (args.Length < 4) { Console.Error.WriteLine("usage: fast-merge BDN.json[,BDN2.json...] TS_900_RUNS TS_LATE_RUNS OUT.json [CONDITIONS.json] [THREADS.json]"); return 2; }
+        // BenchmarkDotNet ran in several sessions (by kernel, each under the heavy-work lock for at most about 15 minutes): args[0] is a comma-separated list of the full JSON reports
+        string[] bdnFiles = args[0].Split(',');
+        var bdn = JsonNode.Parse(File.ReadAllText(bdnFiles[0]))!;
+        foreach (string more in bdnFiles.Skip(1))
+            foreach (var b in JsonNode.Parse(File.ReadAllText(more))!["Benchmarks"]!.AsArray().ToList()) bdn["Benchmarks"]!.AsArray().Add(b!.DeepClone());
         var rows = new List<Row>();
         foreach (var b in bdn["Benchmarks"]!.AsArray())
         {

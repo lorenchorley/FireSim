@@ -23,6 +23,8 @@
   <ItemGroup>
     <!-- T1.4b: the case runner of Fs.Tests (no test framework in it): the WebAssembly build is checked with the code that checked x64. It is solver-checked here (the analyzers apply). -->
     <Compile Include="..\Fs.Tests\FastCaseRunner.cs" Link="FastCaseRunner.cs" />
+    <!-- T1.4b: the timed operations (no BenchmarkDotNet in the file): FastTierExports.BenchOp times them in WebAssembly as bench.ts times the TypeScript -->
+    <Compile Include="..\Fs.Bench\FastOps.cs" Link="FastOps.cs" />
   </ItemGroup>
 
 </Project>

@@ -302,7 +302,8 @@ public sealed class PyrogenicKernelTests
         var k = new PyrogenicKernel(200, 200, 30);
         foreach (KernelExec exec in new[] { KernelExec.Scalar, KernelExec.Vec })
         {
-            for (int i = 0; i < 4; i++) k.Solve(q, exec);
+            var warm = System.Diagnostics.Stopwatch.StartNew(); // see the same test of the level set: tier-1 code must be installed before the count starts
+            for (int i = 0; i < 4 || warm.ElapsedMilliseconds < 600; i++) k.Solve(q, exec);
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 6; i++) k.Solve(q, exec);
             Assert.AreEqual(0, GC.GetAllocatedBytesForCurrentThread() - before, FastTestData.Name(exec));

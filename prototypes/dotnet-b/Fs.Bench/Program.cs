@@ -35,6 +35,8 @@ switch (args.Length > 0 ? args[0] : "")
         return AirMerge.Run(args[1..]);
     case "fast-threads": // T1.4b: thread curve of the fast tier's kernels (FastMerge.Threads)
         return FastMerge.Threads(args[1..]);
+    case "fast-diag": // T1.4b: a developer probe (FastMerge.Diag)
+        return FastMerge.Diag(args[1..]);
     case "fast-aggregate": // T1.4b: the aggregate hash of every computed hash on this machine, as the WebAssembly driver prints it (FastMerge.Aggregate)
         return FastMerge.Aggregate(args[1..]);
     case "fast-merge": // T1.4b: BDN + Node results -> reports/1-fast-kernels.json (FastMerge.Run)

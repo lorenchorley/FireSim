@@ -584,7 +584,10 @@ public sealed class LevelSetKernelTests
         {
             var o = new double[ls.BandCount];
             var proto = FastTestData.Clone(ls);
-            for (int w = 0; w < 5; w++) { ls.Evaluate(ls.Phi, o, true, exec); ls.Evaluate(ls.PhiS, o, false, exec); ls.Evaluate(ls.Phi, null, true, exec); ls.Reinit(exec); }
+            // warm up for 600 ms and at least 5 rounds: tiered compilation promotes a method after 30 calls and a 100 ms timer, and tier-0 code of a generic with static abstract members may allocate; a
+            // fixed count of rounds let that show up as a rare failure (5,800 bytes once in five runs)
+            var warm = System.Diagnostics.Stopwatch.StartNew();
+            for (int w = 0; w < 5 || warm.ElapsedMilliseconds < 600; w++) { ls.Evaluate(ls.Phi, o, true, exec); ls.Evaluate(ls.PhiS, o, false, exec); ls.Evaluate(ls.Phi, null, true, exec); ls.Reinit(exec); }
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 10; i++) { ls.Evaluate(ls.Phi, o, true, exec); ls.Evaluate(ls.PhiS, o, false, exec); ls.Evaluate(ls.Phi, null, true, exec); ls.Reinit(exec); }
             long after = GC.GetAllocatedBytesForCurrentThread();

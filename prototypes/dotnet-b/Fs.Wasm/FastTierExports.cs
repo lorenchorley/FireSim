@@ -45,6 +45,48 @@ public static partial class FastTierExports
         $"{RuntimeInformation.FrameworkDescription}; rid {RuntimeInformation.RuntimeIdentifier}; dynamicCode {System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeCompiled}; " +
         $"vector128 {System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated}";
 
+    static Fs.Bench.FastOps? s_ops;
+
+    /// <summary>Builds the timed operations (Fs.Bench/FastOps.cs) from the stored fixture; returns the sizes of the frames.</summary>
+    [JSExport]
+    public static string BenchSetup()
+    {
+        s_ops = new Fs.Bench.FastOps(new StoreData(), s_header!.RootElement);
+        var z = s_ops.Sizes();
+        return $$"""{"bandCount":{{z.Band}},"hookCells":{{z.Hooks}},"reinitBand":{{z.ReinitBand}}}""";
+    }
+
+    /// <summary>
+    /// Times one operation ("evalStage1", "evalStage2", "reinit", "restore", "pyro") on a form as bench.ts times the TypeScript: a warm-up of at least <paramref name="warmupMs"/> and 30
+    /// operations, then <paramref name="samples"/> single operations each timed on its own; returns the statistics in milliseconds as JSON.
+    /// </summary>
+    [JSExport]
+    public static string BenchOp(string op, int form, int samples, int warmupMs)
+    {
+        var ops = s_ops!;
+        KernelExec e = Form(form);
+        double sink = 0;
+        long w0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        for (int i = 0; i < 30 || System.Diagnostics.Stopwatch.GetElapsedTime(w0).TotalMilliseconds < warmupMs; i++) sink += ops.Run(op, e);
+        var ms = new double[samples];
+        for (int i = 0; i < samples; i++)
+        {
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            sink += ops.Run(op, e);
+            ms[i] = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+        }
+        Array.Sort(ms);
+        double mean = 0;
+        foreach (double x in ms) mean += x;
+        mean /= samples;
+        double sd = 0;
+        foreach (double x in ms) sd += (x - mean) * (x - mean);
+        sd = Math.Sqrt(sd / (samples - 1));
+        double P(int pct) => ms[Math.Min(samples - 1, Math.Max(0, (pct * samples + 99) / 100 - 1))]; // ceil(pct/100 * n) - 1 in integers (no float-to-integer cast)
+        string F(double x) => x.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        return $$"""{"op":"{{op}}","form":{{form}},"n":{{samples}},"medianMs":{{F(P(50))}},"meanMs":{{F(mean)}},"stdDevMs":{{F(sd)}},"p95Ms":{{F(P(95))}},"minMs":{{F(ms[0])}},"maxMs":{{F(ms[^1])}},"sinkFinite":{{(double.IsFinite(sink) ? "true" : "false")}}}""";
+    }
+
     static KernelExec Form(int form) => form switch { 0 => KernelExec.Scalar, 1 => KernelExec.Vec, 2 => KernelExec.Par(4), _ => KernelExec.ParVec(4) };
 
     /// <summary>

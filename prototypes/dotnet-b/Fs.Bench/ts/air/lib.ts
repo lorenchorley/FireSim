@@ -33,8 +33,9 @@ export function loadFixture(dir: string): Fixture {
   const get = (name: string): Typed => {
     const a = table.get(name);
     if (!a) throw new Error(`fixture has no array ${name}`);
-    const T = a.type === 'float32' ? Float32Array : a.type === 'float64' ? Float64Array : Uint8Array;
-    return new T(ab.slice(a.byteOffset, a.byteOffset + a.length * T.BYTES_PER_ELEMENT)); // a copy: kernels write
+    // int32 arrays (the fast tier's band and prepStamp, T1.4b) are Int32Arrays; before this was added they were read as bytes, which made a replay of a stored frame in TypeScript wrong
+    const T = a.type === 'float32' ? Float32Array : a.type === 'float64' ? Float64Array : (a.type as string) === 'int32' ? Int32Array : Uint8Array;
+    return new T(ab.slice(a.byteOffset, a.byteOffset + a.length * T.BYTES_PER_ELEMENT)) as unknown as Typed; // a copy: kernels write
   };
   return { header, get };
 }
