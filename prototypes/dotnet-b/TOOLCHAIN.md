@@ -164,7 +164,7 @@ Source nuget.org through the container's proxy; cache `NUGET_PACKAGES=$FIRESIM_A
 | `Fs.Analyzers` (netstandard2.0) | Microsoft.CodeAnalysis.CSharp 5.0.0 (PrivateAssets all), NETStandard.Library 2.0.3 |
 | `Fs.Kernel` (solver) | Microsoft.CodeAnalysis.BannedApiAnalyzers 5.6.0 (from `Solver.props`); no other package (System.Numerics.Tensors went with the `Pyrogenic/` salvage, T1.4b) |
 | `Fs.Tests` | MSTest 4.5.3 (Microsoft.Testing.Platform runner), Microsoft.CodeAnalysis.CSharp 5.0.0, Microsoft.CodeAnalysis.BannedApiAnalyzers 5.6.0 (assets excluded: it only supplies the DLL that a test loads) |
-| `Fs.Bench` | BenchmarkDotNet 0.15.8 |
+| `Fs.Bench` | BenchmarkDotNet 0.16.0-preview.2 (0.15.8 cannot run net11.0) |
 | `Fs.Compare`, `Fs.Host` | none |
 | `hello/console` | none |
 | `hello/wasm` | Microsoft.NET.Sdk.WebAssembly.Pack 11.0.0, Microsoft.NET.ILLink.Tasks 11.0.0 (implicit) |
