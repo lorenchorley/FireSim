@@ -33,6 +33,14 @@ switch (args.Length > 0 ? args[0] : "")
         return AirMerge.Threads(args[1..]);
     case "air-merge": // T1.4a: BDN + Node results -> reports/1-air-kernels.json (AirMerge.Run)
         return AirMerge.Run(args[1..]);
+    case "fast-threads": // T1.4b: thread curve of the fast tier's kernels (FastMerge.Threads)
+        return FastMerge.Threads(args[1..]);
+    case "fast-diag": // T1.4b: a developer probe (FastMerge.Diag)
+        return FastMerge.Diag(args[1..]);
+    case "fast-aggregate": // T1.4b: the aggregate hash of every computed hash on this machine, as the WebAssembly driver prints it (FastMerge.Aggregate)
+        return FastMerge.Aggregate(args[1..]);
+    case "fast-merge": // T1.4b: BDN + Node results -> reports/1-fast-kernels.json (FastMerge.Run)
+        return FastMerge.Run(args[1..]);
     case "fsmath-run": // T1.3: every FsMath candidate over fixed input files, outputs as raw float64 (FsMathRun)
         return FsMathRun.Run(args[1..]);
     case "fsmath-vectors": // T1.3: CoreMathSharp against the test vectors of its own repository (FsMathVectors)
@@ -111,7 +119,7 @@ static int Merge(string fixtureDir, string bdnJson, string tsJson, string outJso
         ["correctness"] = JsonSerializer.SerializeToNode(check),
         ["speedups"] = new JsonObject
         {
-            ["scalarVsTs"] = T("Scalar"), ["tensorPrimitivesVsTs"] = T("TensorPrimitives"), ["vector128VsTs"] = T("Vector128"), ["vector256VsTs"] = T("Vector256"),
+            ["scalarVsTs"] = T("Scalar"), ["vector128VsTs"] = T("Vector128"),
             ["parallel1VsTs"] = T("Parallel1"), ["parallel2VsTs"] = T("Parallel2"), ["parallel4VsTs"] = T("Parallel4"), ["parallel8VsTs"] = T("Parallel8"),
         },
         ["gate"] = new JsonObject

@@ -257,7 +257,7 @@ public sealed class ResultSchemaTests
     [TestMethod]
     public void ExistingContainerResultFilesStillValidateAgainstTheExtendedSchema()
     {
-        foreach (var file in new[] { "1-kernel-results.json", "3a-results.json" })
+        foreach (var file in new[] { "1-kernel-results.json", "3a-results.json", "1-fast-kernels.json" })
         {
             var errors = ResultValidator.ValidateContainerResults(File.ReadAllText(Path.Combine(RepoReports(), file)));
             Assert.AreEqual(0, errors.Count, file + ": " + string.Join("; ", errors.Take(5)));
