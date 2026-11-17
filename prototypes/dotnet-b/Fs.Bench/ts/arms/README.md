@@ -15,7 +15,7 @@ window) and compares SHA-256 (first 128 bits, NaN canonicalised, -0 kept: `sha.t
 ## Run it
 From the repository root (`node_modules` reachable: `npm ci` or a link). Nothing here needs dotnet.
 ```
-S=$SCRATCH/T1.5ac                                              # fixtures and results; never committed
+S=${SCRATCH:?set SCRATCH to a scratch directory first}/T1.5ac   # fixtures and results; never committed (an unset SCRATCH would write to /T1.5ac)
 bash prototypes/dotnet-b/Fs.Bench/ts/air/regen.sh  $S/air      # fixtures (5 and 25 MB) and the golden files (git diff shows whether the TypeScript's results changed)
 bash prototypes/dotnet-b/Fs.Bench/ts/fast/regen.sh $S/fast     # (8 MB each)
 bash prototypes/dotnet-b/Fs.Bench/ts/arms/run-arms.sh build $S $S/res
