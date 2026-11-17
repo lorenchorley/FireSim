@@ -11,7 +11,10 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { BARS, HORIZONS, METRICS, barFractions, barMetrics, firstDivergence, readArrival, verdict, worstFraction } from './bars.mjs';
+import { BARS, HORIZONS, METRICS, barFractions, barMetrics, firstDivergence, quantileSorted, readArrival, verdict, worstFraction } from './bars.mjs';
+
+// Seeds that are not part of the card's matrix (the T3.1a glimpse, katoomba3-standard-4h seed 11 with noise seed 1): shown on their own, not pooled.
+const EXTRA_SEEDS = new Set([11]);
 
 const opt = (n) => {
   const i = process.argv.indexOf(`--${n}`);
@@ -22,13 +25,14 @@ if (!store || !opt('json')) {
   console.error('usage: floors.mjs --store DIR --json OUT.json [--md OUT.md]');
   process.exit(2);
 }
-const TIER = { 'katoomba6-fast-4h': 'fast, Katoomba 6 km', 'katoomba3-standard-4h': 'standard, Katoomba 3 km', 'warrumbungles6-fast-4h': 'fast, Warrumbungles 6 km' };
+let EMB = true; // the bars that apply to the scenario being aggregated: embers on (the three main scenarios) or off (the -noembers variants)
+const TIER = { 'katoomba6-fast-4h-noembers': 'fast, Katoomba 6 km, embers off', 'katoomba3-standard-4h-noembers': 'standard, Katoomba 3 km, embers off', 'katoomba6-fast-4h': 'fast, Katoomba 6 km', 'katoomba3-standard-4h': 'standard, Katoomba 3 km', 'warrumbungles6-fast-4h': 'fast, Warrumbungles 6 km' };
 const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 const stats = (xs) => {
   const v = xs.filter((x) => !Number.isNaN(x)).sort((a, b) => a - b);
-  if (!v.length) return { n: 0, mean: NaN, min: NaN, median: NaN, max: NaN };
+  if (!v.length) return { n: 0, mean: NaN, min: NaN, median: NaN, p90: NaN, max: NaN };
   const mid = v.length >> 1;
-  return { n: v.length, mean: v.reduce((a, b) => a + b, 0) / v.length, min: v[0], median: v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2, max: v[v.length - 1] };
+  return { n: v.length, mean: v.reduce((a, b) => a + b, 0) / v.length, min: v[0], median: v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2, p90: quantileSorted(v, 0.9), max: v[v.length - 1] };
 };
 const dirs = (d) => (fs.existsSync(d) ? fs.readdirSync(d).filter((x) => fs.statSync(path.join(d, x)).isDirectory()).sort() : []);
 const ledger = fs.existsSync(path.join(store, 'ledger.jsonl')) ? fs.readFileSync(path.join(store, 'ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
@@ -40,13 +44,14 @@ function measure(ref, cand, cellSize) {
   const byH = {};
   for (const h of HORIZONS) {
     const m = barMetrics(ref, cand, h, cellSize);
-    byH[h] = { ...m, fractions: barFractions(m, true), worstFraction: worstFraction(m, true), worstFractionEmbersOff: worstFraction(m, false) };
+    byH[h] = { ...m, fractions: barFractions(m, EMB), worstFraction: worstFraction(m, EMB), worstFractionEmbersOff: worstFraction(m, false) };
   }
-  return { horizons: byH, first: firstDivergence(ref, cand, { gridS, embers: true }) };
+  return { horizons: byH, first: firstDivergence(ref, cand, { gridS, embers: EMB }) };
 }
 
 for (const scenario of dirs(store)) {
-  const sc = { scenario, tier: TIER[scenario] ?? scenario, embers: true, seeds: {}, pooled: {} };
+  EMB = !scenario.endsWith('-noembers');
+  const sc = { scenario, tier: TIER[scenario] ?? scenario, embers: EMB, bars: EMB ? BARS.embersOn : BARS.embersOff, seeds: {}, pooled: {} };
   for (const seedDir of dirs(path.join(store, scenario))) {
     const seed = Number(seedDir.replace('seed', ''));
     const base = path.join(store, scenario, seedDir);
@@ -104,14 +109,18 @@ for (const scenario of dirs(store)) {
   }
   // pooled over seeds and draws, per horizon
   for (const h of HORIZONS) {
-    const draws = Object.values(sc.seeds).flatMap((e) => e.noise.draws.map((d) => d.horizons[h]));
+    const matrixSeeds = Object.values(sc.seeds).filter((e) => !EXTRA_SEEDS.has(e.seed));
+    const draws = matrixSeeds.flatMap((e) => e.noise.draws.map((d) => d.horizons[h]));
     const p = { noiseDraws: draws.length };
+    p.noiseDrawsAboveBar = Object.fromEntries(METRICS.filter((k) => (EMB ? BARS.embersOn : BARS.embersOff)[k] !== null).map((k) => [k, draws.filter((d) => d[k] > (EMB ? BARS.embersOn : BARS.embersOff)[k]).length]));
+    p.noiseDrawsWithAnyDifference = draws.filter((d) => d.disagree > 0 || d.differing > 0).length;
+    p.noiseDrawsWithStatusDifference = draws.filter((d) => d.disagree > 0).length;
     for (const k of [...METRICS, 'areaSignedPct', 'worstFraction']) p[`noise_${k}`] = stats(draws.map((d) => d[k]));
     p.noiseDrawsAtOrAboveBar = draws.filter((d) => d.worstFraction >= 1).length;
     p.noiseVerdictWorstDraw = verdict(p.noise_worstFraction.max);
     p.noiseVerdictMeanDraw = verdict(p.noise_worstFraction.mean);
     for (const arm of ['chrome', 'chromeinit']) {
-      const es = Object.values(sc.seeds).map((e) => e[arm]?.horizons[h]).filter(Boolean);
+      const es = Object.values(sc.seeds).filter((e) => !EXTRA_SEEDS.has(e.seed)).map((e) => e[arm]?.horizons[h]).filter(Boolean);
       p[`${arm}_seeds`] = es.length;
       p[`${arm}_worstFraction`] = es.length ? Math.max(...es.map((x) => x.worstFraction)) : null;
       p[`${arm}_verdict`] = es.length ? verdict(p[`${arm}_worstFraction`]) : null;
@@ -130,7 +139,7 @@ const lines = [];
 const bar = BARS.embersOn;
 lines.push(`Bars (embers on): cells ${bar.disagreePct} %, area ${bar.areaDiffPct} %, median ${bar.medianAbsS} s (embers off: ${BARS.embersOff.disagreePct} %, ${BARS.embersOff.areaDiffPct} %, ${BARS.embersOff.medianAbsS} s, p95 ${BARS.embersOff.p95AbsS} s).`);
 for (const sc of out.scenarios) {
-  lines.push('', `### ${sc.scenario} (${sc.tier})`, '');
+  lines.push('', `### ${sc.scenario} (${sc.tier})`, '', `Bars used (plan 10.3, embers ${sc.embers ? 'on' : 'off'}): cells ${sc.bars.disagreePct} %, area ${sc.bars.areaDiffPct} %, median ${sc.bars.medianAbsS} s${sc.bars.p95AbsS ? `, 95th percentile ${sc.bars.p95AbsS} s` : ''}.`, '');
   lines.push('Noise floor, per seed (mean / min / max over draws), by horizon.', '');
   lines.push('| seed | horizon | draws | cells differ, % of ever-burning | area difference, % (signed mean) | median arrival diff, s | 95th pct, s | worst fraction of a bar | draws at or above a bar |');
   lines.push('|---|---|---|---|---|---|---|---|---|');
@@ -139,21 +148,43 @@ for (const sc of out.scenarios) {
     const t = (st, d = 2) => `${f(st.mean, d)} / ${f(st.min, d)} / ${f(st.max, d)}`;
     lines.push(`| ${seed} | ${hl(h)} | ${s.draws} | ${t(s.disagreePct)} | ${t(s.areaDiffPct)} (${f(s.areaSignedPct.mean)}) | ${t(s.medianAbsS, 1)} | ${t(s.p95AbsS, 1)} | ${f(s.worstFraction.mean)} / ${f(s.worstFraction.max)} | ${s.drawsAtOrAboveBar} of ${s.draws} |`);
   }
-  lines.push('', 'First divergence of the noise draws (seconds into the fire; exact = the first moment any cell differs; snapshot = the next 300 s snapshot).', '');
-  lines.push('| seed | draws | draws bit-identical to the reference | exact: min / median / max | snapshot: min / median / max |');
-  lines.push('|---|---|---|---|---|');
+  lines.push('', 'Pooled over the seeds of the matrix (all draws): each bar\'s metric as mean / median / 90th percentile / max, and the number of draws above that bar.', '');
+  lines.push(`| horizon | draws | cells differ, % of ever-burning | area difference, % | median arrival diff, s | 95th pct, s | draws above the bar: cells / area / median${sc.bars.p95AbsS ? ' / 95th pct' : ''} | draws with any difference |`);
+  lines.push('|---|---|---|---|---|---|---|---|');
+  for (const h of HORIZONS) {
+    const p = sc.pooled[h];
+    const t = (st, d = 2) => `${f(st.mean, d)} / ${f(st.median, d)} / ${f(st.p90, d)} / ${f(st.max, d)}`;
+    lines.push(`| ${hl(h)} | ${p.noiseDraws} | ${t(p.noise_disagreePct)} | ${t(p.noise_areaDiffPct)} | ${t(p.noise_medianAbsS, 1)} | ${t(p.noise_p95AbsS, 1)} | ${p.noiseDrawsAboveBar.disagreePct} / ${p.noiseDrawsAboveBar.areaDiffPct} / ${p.noiseDrawsAboveBar.medianAbsS}${sc.bars.p95AbsS ? ` / ${p.noiseDrawsAboveBar.p95AbsS}` : ''} of ${p.noiseDraws} | ${p.noiseDrawsWithAnyDifference} of ${p.noiseDraws} |`);
+  }
+  lines.push('', 'First divergence of the noise draws, seconds into the fire. `any` = the first moment any cell\'s arrival time differs at all (even by a float32 step); `snapshot` = the next 300 s snapshot; `first above a bar` = the first 300 s grid time at which a metric is above its bar, median over the draws that get there (a draw that never does is not counted; `draws that ever go above` says how many).', '');
+  lines.push('| seed | draws | bit-identical to the reference | any: min / median / max | snapshot: min / median / max | draws that ever go above: cells / area / median | first above a bar: cells / area / median (median over those draws) |');
+  lines.push('|---|---|---|---|---|---|---|');
   for (const [seed, e] of Object.entries(sc.seeds)) {
     const fd = e.noise.firstDivergence;
-    lines.push(`| ${seed} | ${e.noise.draws.length} | ${fd.drawsIdenticalToRef} | ${f(fd.exactS.min, 0)} / ${f(fd.exactS.median, 0)} / ${f(fd.exactS.max, 0)} | ${f(fd.snapshotS.min, 0)} / ${f(fd.snapshotS.median, 0)} / ${f(fd.snapshotS.max, 0)} |`);
+    const ex = (k) => e.noise.draws.map((d) => d.first.firstExceedS[k]).filter((x) => x !== null && x !== undefined);
+    const med = (k) => (ex(k).length ? f(stats(ex(k)).median, 0) : 'none');
+    lines.push(`| ${seed}${EXTRA_SEEDS.has(Number(seed)) ? ' (T3.1a draw)' : ''} | ${e.noise.draws.length} | ${fd.drawsIdenticalToRef} | ${fd.exactS.n ? `${f(fd.exactS.min, 0)} / ${f(fd.exactS.median, 0)} / ${f(fd.exactS.max, 0)}` : 'none'} | ${fd.snapshotS.n ? `${f(fd.snapshotS.min, 0)} / ${f(fd.snapshotS.median, 0)} / ${f(fd.snapshotS.max, 0)}` : 'none'} | ${ex('disagreePct').length} / ${ex('areaDiffPct').length} / ${ex('medianAbsS').length} | ${med('disagreePct')} / ${med('areaDiffPct')} / ${med('medianAbsS')} |`);
   }
-  lines.push('', 'Engine floor: Chromium against Node 22, no noise. `own` = the browser builds its own scenario (primary); `init` = the browser solver on Node\'s init.bin.', '');
-  lines.push('| seed | arm | horizon | cells differ, % | area diff, % (signed) | median s | 95th pct s | max s | worst fraction of a bar |');
-  lines.push('|---|---|---|---|---|---|---|---|---|');
-  for (const [seed, e] of Object.entries(sc.seeds)) for (const arm of ['chrome', 'chromeinit']) {
-    if (!e[arm]) continue;
-    for (const h of HORIZONS) {
-      const m = e[arm].horizons[h];
-      lines.push(`| ${seed} | ${arm === 'chrome' ? 'own' : 'init'} | ${hl(h)} | ${f(m.disagreePct, 3)} | ${f(m.areaDiffPct, 3)} (${f(m.areaSignedPct, 3)}) | ${f(m.medianAbsS, 3)} | ${f(m.p95AbsS, 3)} | ${f(m.maxAbsS, 3)} | ${f(m.worstFraction, 4)} |`);
+  if (Object.values(sc.seeds).some((e) => e.chrome)) {
+    lines.push('', 'Engine floor: Chromium 153 against Node 22, no noise. Two arms: `own` = the browser builds its own scenario; `init` = the browser solver runs on Node\'s init.bin. Where both arms give the same numbers they are one row (`own = init`).', '');
+    lines.push('', 'First divergence of Chromium from Node (own arm; seconds into the fire): the first moment any arrival time differs, and the first 300 s grid time above each bar (none = never, up to 4 h).', '');
+    lines.push('| seed | any difference | snapshot | first above: cells / area / median |');
+    lines.push('|---|---|---|---|');
+    for (const [seed, e] of Object.entries(sc.seeds)) {
+      if (!e.chrome) continue;
+      const fx = e.chrome.first;
+      lines.push(`| ${seed} | ${fx.exactS === null ? 'none (bit-identical raster)' : f(fx.exactS, 0)} | ${fx.snapshotS ?? 'none'} | ${f(fx.firstExceedS.disagreePct ?? 'none', 0)} / ${f(fx.firstExceedS.areaDiffPct ?? 'none', 0)} / ${f(fx.firstExceedS.medianAbsS ?? 'none', 0)} |`);
+    }
+    lines.push('', 'The two arms, by horizon:', '');
+    lines.push('| seed | arm | horizon | cells differ, % | area diff, % (signed) | median s | 95th pct s | max s | worst fraction of a bar |');
+    lines.push('|---|---|---|---|---|---|---|---|---|');
+    const sameArms = (e, h) => e.chrome && e.chromeinit && ['disagreePct', 'areaSignedPct', 'medianAbsS', 'p95AbsS', 'maxAbsS', 'burntCand'].every((k) => Object.is(e.chrome.horizons[h][k], e.chromeinit.horizons[h][k]));
+    for (const [seed, e] of Object.entries(sc.seeds)) for (const h of HORIZONS) {
+      for (const arm of ['chrome', 'chromeinit']) {
+        if (!e[arm] || (arm === 'chromeinit' && sameArms(e, h))) continue;
+        const m = e[arm].horizons[h];
+        lines.push(`| ${seed} | ${arm === 'chrome' ? (sameArms(e, h) ? 'own = init' : 'own') : 'init'} | ${hl(h)} | ${f(m.disagreePct, 3)} | ${f(m.areaDiffPct, 3)} (${f(m.areaSignedPct, 3)}) | ${f(m.medianAbsS, 3)} | ${f(m.p95AbsS, 3)} | ${f(m.maxAbsS, 3)} | ${f(m.worstFraction, 4)} |`);
+      }
     }
   }
 }
